@@ -5,7 +5,7 @@ simulator. (The copies in ``sim/virtual_matrix.py`` remain for backwards
 compatibility; scenes should import from here.)
 """
 
-from scenes._dio import dio
+from _dio import dio
 
 # ----------------------------------------------------------------------------
 # Tiny 3x5 pixel font (digits + % + a few letters) for sensor readouts

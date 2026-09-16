@@ -24,12 +24,12 @@ import os
 import sys
 import time
 
-SIM_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(SIM_DIR)
-sys.path.insert(0, ROOT)     # To get scenes/
-sys.path.insert(0, SIM_DIR)  # To get virtual_matrix
+# SIM_DIR = os.path.dirname(os.path.abspath(__file__))
+# ROOT = os.path.dirname(SIM_DIR)
+# sys.path.insert(0, ROOT)     # To get scenes/
+# sys.path.insert(0, SIM_DIR)  # To get virtual_matrix
 
-import virtual_matrix as vm
+import simulator.virtual_matrix as vm
 
 SCENES = ("example_fish_scene")
 

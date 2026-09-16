@@ -9,8 +9,8 @@ Backend-agnostic -- runs in the desktop simulator and on the MatrixPortal.
 import math
 import random
 
-from scenes._dio import dio
-from scenes.graphics_helpers import bitmap_from_art, flip_horizontal
+from _dio import dio
+from graphics.graphics_helpers import bitmap_from_art, flip_horizontal
 
 # ----------------------------------------------------------------------------
 # Fish sprites: '.' transparent, 'b' body, 'e' eye, 't' tail.
