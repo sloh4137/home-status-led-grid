@@ -1,0 +1,14 @@
+# Copy to the CIRCUITPY drive as settings.toml and fill in your values.
+# CircuitPython reads these with os.getenv() -- no secrets.py needed.
+
+CIRCUITPY_WIFI_SSID = "your-wifi-ssid"
+CIRCUITPY_WIFI_PASSWORD = "your-wifi-password"
+
+# Home Assistant on your LAN (no cloud needed)
+HA_URL = "http://10.41.2.101:8123"
+# Long-lived access token: HA -> your profile -> Security -> Long-lived access tokens
+HA_TOKEN = "paste-token-here"
+
+# Entity IDs this project reads (adjust to your actual entities)
+HUMIDITY_ENTITY = "sensor.bathroom_humidity"
+WASHER_ENTITY = "sensor.washer_status"
