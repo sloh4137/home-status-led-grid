@@ -1,20 +1,16 @@
-"""Fish tank demo for the virtual LED matrix.
+"""Fish tank scene: fish, bubbles, water gradient, swaying seaweed.
 
-Run on your Mac:  python3 sim/fish_tank.py [--width 64] [--height 64] [--scale 8]
-(Requires a display -- tkinter opens a window.)
+Backend-agnostic -- runs in the desktop simulator and on the MatrixPortal.
 
-The scene is built from displayio-style primitives (Bitmap / Palette /
-TileGrid / Group) so it ports almost unchanged to the MatrixPortal's
-CircuitPython -- see hardware/code.py.
+    group, update = create_scene(width, height)
+    # per frame: update(dt)
 """
 
 import math
 import random
-import sys
-import os
 
-sys.path.insert(0, os.path.dirname(__file__))
-import virtual_matrix as vm
+from scenes._dio import dio
+from scenes.graphics_helpers import bitmap_from_art, flip_horizontal
 
 # ----------------------------------------------------------------------------
 # Fish sprites: '.' transparent, 'b' body, 'e' eye, 't' tail.
@@ -58,7 +54,7 @@ FISH_COLORS = [
 
 
 def make_fish_palette(body, eye, tail):
-    pal = vm.Palette(4)
+    pal = dio.Palette(4)
     pal.make_transparent(0)
     pal[1] = body
     pal[2] = eye
@@ -69,14 +65,14 @@ def make_fish_palette(body, eye, tail):
 class Fish:
     def __init__(self, colors, y, speed, direction, width, height):
         cmap = {".": 0, "b": 1, "e": 2, "t": 3}
-        bmp_a = vm.bitmap_from_art(FISH_A, cmap)
-        bmp_b = vm.bitmap_from_art(FISH_B, cmap)
+        bmp_a = bitmap_from_art(FISH_A, cmap)
+        bmp_b = bitmap_from_art(FISH_B, cmap)
         if direction > 0:  # swimming right -> face right
-            bmp_a = vm.flip_horizontal(bmp_a)
-            bmp_b = vm.flip_horizontal(bmp_b)
+            bmp_a = flip_horizontal(bmp_a)
+            bmp_b = flip_horizontal(bmp_b)
         self.frames = [bmp_a, bmp_b]
         self.palette = make_fish_palette(*colors)
-        self.grid = vm.TileGrid(bmp_a, self.palette, x=0, y=y)
+        self.grid = dio.TileGrid(bmp_a, pixel_shader=self.palette, x=0, y=y)
         self.width = width
         self.height = height
         self.y_base = y
@@ -111,7 +107,7 @@ class Bubbles:
     def __init__(self, width, height, count=14):
         self.width = width
         self.height = height
-        self.palette = vm.Palette(2)
+        self.palette = dio.Palette(2)
         self.palette.make_transparent(0)
         self.palette[1] = 0x9BDCFF
         self.items = []
@@ -119,14 +115,14 @@ class Bubbles:
             self.items.append(self._new(random.uniform(0, height)))
 
     def _new(self, y=None):
-        bmp = vm.Bitmap(3, 3, 2)
+        bmp = dio.Bitmap(3, 3, 2)
         for (x, yy) in [(1, 0), (0, 1), (2, 1), (1, 2)]:
             bmp[x, yy] = 1
         fy = float(y) if y is not None else float(self.height)
         return {
-            "grid": vm.TileGrid(bmp, self.palette,
-                                x=random.randint(0, self.width - 3),
-                                y=int(fy)),
+            "grid": dio.TileGrid(bmp, pixel_shader=self.palette,
+                                 x=random.randint(0, self.width - 3),
+                                 y=int(fy)),
             "fy": fy,
             "speed": random.uniform(8, 20),
             "wobble": random.uniform(0, 6.28),
@@ -155,11 +151,11 @@ class Bubbles:
 
 def make_seaweed_frames():
     frames = []
-    pal = vm.Palette(2)
+    pal = dio.Palette(2)
     pal.make_transparent(0)
     pal[1] = 0x1FA84F
     for phase in range(4):
-        bmp = vm.Bitmap(5, 18, 2)
+        bmp = dio.Bitmap(5, 18, 2)
         for y in range(18):
             x = 2 + int(math.sin(y * 0.45 + phase * 1.57) * 1.6)
             bmp[x, y] = 1
@@ -175,28 +171,29 @@ def make_seaweed_frames():
 
 def make_water_background(width, height):
     """Vertical gradient, deep blue at top to slightly lighter at bottom."""
-    pal = vm.Palette(16)
+    pal = dio.Palette(16)
     pal[0] = 0x000000
     for i in range(1, 16):
         f = i / 15
         pal[i] = (int(4 + 10 * f) << 16) | (int(10 + 30 * f) << 8) | int(40 + 60 * f)
-    bmp = vm.Bitmap(width, height, 16)
+    bmp = dio.Bitmap(width, height, 16)
     for y in range(height):
         idx = 1 + int((y / height) * 14)
         for x in range(width):
             bmp[x, y] = idx
-    return vm.TileGrid(bmp, pal)
+    return dio.TileGrid(bmp, pixel_shader=pal)
 
 
 def create_scene(width=64, height=64):
     """Build the scene. Returns (group, update(dt)) for the main loop."""
-    group = vm.Group()
+    group = dio.Group()
     group.append(make_water_background(width, height))
 
     weed_frames = make_seaweed_frames()
     weeds = []
     for wx in (6, width // 2 - 2, width - 12):
-        grid = vm.TileGrid(weed_frames[0][0], weed_frames[0][1], x=wx, y=height - 18)
+        grid = dio.TileGrid(weed_frames[0][0], pixel_shader=weed_frames[0][1],
+                            x=wx, y=height - 18)
         group.append(grid)
         weeds.append((grid, weed_frames, random.uniform(0, 4)))
 
@@ -227,23 +224,3 @@ def create_scene(width=64, height=64):
             grid.bitmap = frames[int(now * 2 + phase) % 4][0]
 
     return group, update
-
-
-def main():
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Virtual LED matrix fish tank")
-    parser.add_argument("--width", type=int, default=64, help="matrix width in pixels")
-    parser.add_argument("--height", type=int, default=64, help="matrix height in pixels")
-    parser.add_argument("--scale", type=int, default=8, help="screen px per LED")
-    args = parser.parse_args()
-
-    group, update = create_scene(args.width, args.height)
-    display = vm.VirtualDisplay(args.width, args.height, scale=args.scale,
-                                title="Fish Tank -- virtual %dx%d" % (args.width, args.height))
-    display.show(group)
-    display.run(update, fps=30)
-
-
-if __name__ == "__main__":
-    main()
