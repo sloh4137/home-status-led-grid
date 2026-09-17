@@ -31,7 +31,7 @@ import time
 
 import simulator.virtual_matrix as vm
 
-SCENES = ("example_fish_scene")
+SCENES = ("example_fish_scene", "pond")
 
 
 def _wrap_rain(update):
@@ -47,7 +47,9 @@ def _wrap_rain(update):
 
 def _run_sim(group, update, width, height, scale, scene):
     display = vm.VirtualDisplay(
-        width, height, scale=scale,
+        width,
+        height,
+        scale=scale,
         title="%s -- virtual %dx%d" % (scene, width, height),
     )
     shown = {"group": None}
@@ -87,12 +89,19 @@ def _run_hw(group, update, width, height):
         height=height,
         bit_depth=4,
         rgb_pins=[
-            board.MTX_R1, board.MTX_G1, board.MTX_B1,
-            board.MTX_R2, board.MTX_G2, board.MTX_B2,
+            board.MTX_R1,
+            board.MTX_G1,
+            board.MTX_B1,
+            board.MTX_R2,
+            board.MTX_G2,
+            board.MTX_B2,
         ],
         addr_pins=[
-            board.MTX_ADDRA, board.MTX_ADDRB, board.MTX_ADDRC,
-            board.MTX_ADDRD, board.MTX_ADDRE,
+            board.MTX_ADDRA,
+            board.MTX_ADDRB,
+            board.MTX_ADDRC,
+            board.MTX_ADDRD,
+            board.MTX_ADDRE,
         ],
         clock_pin=board.MTX_CLK,
         latch_pin=board.MTX_LAT,
@@ -121,14 +130,25 @@ def _run_hw(group, update, width, height):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="LED matrix scene runner")
-    parser.add_argument("--scene", choices=SCENES, default="example_fish_scene",
-                        help="which scene to run (default: example_fish_scene)")
-    parser.add_argument("--backend", choices=["sim", "hw"], default="sim",
-                        help="sim = tkinter window, hw = real MatrixPortal stack")
+    parser.add_argument(
+        "--scene",
+        choices=SCENES,
+        default="example_fish_scene",
+        help="which scene to run (default: example_fish_scene)",
+    )
+    parser.add_argument(
+        "--backend",
+        choices=["sim", "hw"],
+        default="sim",
+        help="sim = tkinter window, hw = real MatrixPortal stack",
+    )
     parser.add_argument("--width", type=int, default=64, help="matrix width in pixels")
-    parser.add_argument("--height", type=int, default=64, help="matrix height in pixels")
-    parser.add_argument("--scale", type=int, default=8,
-                        help="screen px per LED (sim backend only)")
+    parser.add_argument(
+        "--height", type=int, default=64, help="matrix height in pixels"
+    )
+    parser.add_argument(
+        "--scale", type=int, default=8, help="screen px per LED (sim backend only)"
+    )
     args = parser.parse_args(argv)
 
     mod = importlib.import_module("scenes." + args.scene)
