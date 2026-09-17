@@ -10,11 +10,29 @@ class Vector:
     def add(self, other: Vector) -> Vector:
         return Vector(self.x + other.x, self.y + other.y)
 
+    def __add__(self, other: Vector) -> Vector:
+        return Vector(self.x + other.x, self.y + other.y)
+
     def sub(self, other: Vector) -> Vector:
         return Vector(self.x - other.x, self.y - other.y)
 
+    def __sub__(self, other: Vector) -> Vector:
+        return Vector(self.x - other.x, self.y - other.y)
+
+    def __mul__(self, s: float) -> Vector:
+        return Vector(self.x * s, self.y * s)
+
+    __rmul__ = __mul__
+
     def magnitude(self) -> float:
         return sqrt(self.x**2 + self.y**2)
+
+    def normalized(self) -> Vector:
+        mag = self.magnitude()
+        if mag < 1e-9:
+            return Vector(0, 0)
+
+        return Vector(self.x / mag, self.y / mag)
 
     def heading(self) -> float:
         return atan2(self.y, self.x)

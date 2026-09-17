@@ -2,11 +2,12 @@
 
 from math import pi, ceil, floor
 from creatures.vector import Vector, constrain_angle
+from creatures.creature import Creature
 
 from _dio import dio
 
 
-class Chain:
+class Chain(Creature):
     def __init__(
         self,
         origin: Vector,
@@ -35,12 +36,16 @@ class Chain:
         )
         self.render()
 
-    def move(self, head_pos: Vector):
+    def getPos(self):
+        return self.joints[0]
+
+    def move(self, velocity: Vector):
         """
         Update the head position to the given argument then update all the joints accordingly.
         """
 
         # Move the head to the given position
+        head_pos = self.joints[0].add(velocity)
         self.angles[0] = head_pos.sub(self.joints[0]).heading()
         self.joints[0] = head_pos
 
