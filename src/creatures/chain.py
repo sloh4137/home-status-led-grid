@@ -1,7 +1,7 @@
 # Basic chain representing the spine of a creature
 
 from math import pi, ceil, floor
-from creatures.vector import Vector, constrain_angle
+from graphics.vector import Vector, constrain_angle
 from creatures.creature import Creature
 
 from _dio import dio
@@ -24,7 +24,7 @@ class Chain(Creature):
         link_size_vec = Vector(0, link_size)
         for i in range(1, num_joints):
             prev_joint = self.joints[i - 1]
-            self.joints.append(prev_joint.add(link_size_vec))
+            self.joints.append(prev_joint + link_size_vec)
 
         # Graphics
         self.palette = dio.Palette(2)
@@ -36,7 +36,7 @@ class Chain(Creature):
         )
         self.render()
 
-    def getPos(self):
+    def position(self):
         return self.joints[0]
 
     def move(self, velocity: Vector):
@@ -45,21 +45,21 @@ class Chain(Creature):
         """
 
         # Move the head to the given position
-        head_pos = self.joints[0].add(velocity)
-        self.angles[0] = head_pos.sub(self.joints[0]).heading()
+        head_pos = self.joints[0] + velocity
+        self.angles[0] = (head_pos - self.joints[0]).heading()
         self.joints[0] = head_pos
 
         for i in range(1, len(self.joints)):
             prev_vector = self.joints[i - 1]
             prev_angle = self.angles[i - 1]
 
-            cur_angle = prev_vector.sub(self.joints[i]).heading()
+            cur_angle = (prev_vector - self.joints[i]).heading()
             constrained_angle = constrain_angle(
                 cur_angle, prev_angle, self.angle_constraint
             )
             self.angles[i] = constrained_angle
-            self.joints[i] = prev_vector.sub(
-                Vector.from_angle(constrained_angle, self.link_size)
+            self.joints[i] = prev_vector - Vector.from_angle(
+                constrained_angle, self.link_size
             )
 
     def render(self):

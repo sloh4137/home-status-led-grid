@@ -1,5 +1,5 @@
 from behaviors.behavior import Behavior
-from creatures.vector import Vector
+from graphics.vector import Vector
 from creatures.creature import Creature
 from typing import List
 import math
@@ -70,7 +70,7 @@ class CircleBehavior(Behavior):
             # a point based on the time-based angle
             entry_angle = self.angular_speed * self.time
         else:
-            entry_angle = math.atan2(to_pos.y, to_pos.x)
+            entry_angle = to_pos.heading()
 
         closest_point = self.get_position_on_circle(entry_angle)
         dist_to_closest = (closest_point - position).magnitude()
@@ -89,7 +89,7 @@ class CircleBehavior(Behavior):
 
     def update(self, dt: float):
         for c in self.creatures:
-            c.move(self.get_movement_delta(c.getPos(), dt))
+            c.move(self.get_movement_delta(c.position(), dt))
             c.render()
 
         self.time += dt

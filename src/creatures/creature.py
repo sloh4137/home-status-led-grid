@@ -1,13 +1,13 @@
 # Creatures define some movable, dynamic entity that can move around the screen.
 
 from abc import ABC, abstractmethod
-from creatures.vector import Vector
+from graphics.vector import Vector
 
 
 class Creature(ABC):
 
     @abstractmethod
-    def getPos(self) -> Vector:
+    def position(self) -> Vector:
         """
         Get the primary position of the creature we'll use for behavior calculations.
         """
