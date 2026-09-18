@@ -7,7 +7,7 @@ from creatures.creature import Creature
 from _dio import dio
 
 
-class Chain(Creature):
+class CreatureSpine(Creature):
     def __init__(
         self,
         origin: Vector,
