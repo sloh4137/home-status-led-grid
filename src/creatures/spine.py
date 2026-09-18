@@ -34,7 +34,6 @@ class CreatureSpine(Creature):
         self.grid = dio.TileGrid(
             self.bitmap, pixel_shader=self.palette, x=origin.x, y=origin.y
         )
-        self.render()
 
     def position(self):
         return self.joints[0]
