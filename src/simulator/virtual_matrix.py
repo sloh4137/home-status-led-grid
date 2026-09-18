@@ -13,57 +13,60 @@ On real hardware the equivalent setup is:
 Requires tkinter (ships with CPython; on some Linux distros: apt install python3-tk).
 """
 
+from typing import Tuple
+
 # ----------------------------------------------------------------------------
 # displayio-compatible primitives
 # ----------------------------------------------------------------------------
 
+
 class Bitmap:
     """displayio.Bitmap: a width x height grid of palette indices."""
 
-    def __init__(self, width, height, colors):
+    def __init__(self, width: int, height: int, colors: int):
         self.width = width
         self.height = height
         self._pixels = bytearray(width * height)
 
-    def __setitem__(self, pos, value):
+    def __setitem__(self, pos: Tuple[int, int], value):
         x, y = pos
         if 0 <= x < self.width and 0 <= y < self.height:
             self._pixels[y * self.width + x] = value & 0xFF
 
-    def __getitem__(self, pos):
+    def __getitem__(self, pos: Tuple[int, int]):
         x, y = pos
         if 0 <= x < self.width and 0 <= y < self.height:
             return self._pixels[y * self.width + x]
         return 0
 
-    def fill(self, value):
+    def fill(self, value: int):
         self._pixels = bytearray([value & 0xFF]) * (self.width * self.height)
 
 
 class Palette:
     """displayio.Palette: maps a bitmap index to a 0xRRGGBB color."""
 
-    def __init__(self, num_colors):
+    def __init__(self, num_colors: int):
         self.colors = [0x000000] * num_colors
         self._transparent = set()
 
-    def __setitem__(self, index, color):
+    def __setitem__(self, index: int, color: int):
         self.colors[index] = color
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int) -> int:
         return self.colors[index]
 
-    def make_transparent(self, index):
+    def make_transparent(self, index: int):
         self._transparent.add(index)
 
-    def is_transparent(self, index):
+    def is_transparent(self, index: int) -> bool:
         return index in self._transparent
 
 
 class TileGrid:
     """displayio.TileGrid: places a Bitmap on screen at (x, y)."""
 
-    def __init__(self, bitmap, pixel_shader, x=0, y=0):
+    def __init__(self, bitmap: Bitmap, pixel_shader: Palette, x: int = 0, y: int = 0):
         self.bitmap = bitmap
         self.pixel_shader = pixel_shader
         self.x = x
@@ -76,16 +79,16 @@ class Group:
     def __init__(self):
         self._items = []
 
-    def append(self, item):
+    def append(self, item: TileGrid):
         self._items.append(item)
 
-    def remove(self, item):
+    def remove(self, item: TileGrid):
         self._items.remove(item)
 
-    def pop(self):
+    def pop(self) -> TileGrid:
         return self._items.pop()
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._items)
 
     def __iter__(self):
@@ -95,6 +98,7 @@ class Group:
 # ----------------------------------------------------------------------------
 # Compositor: pure function, shared by the tkinter window and the GIF renderer
 # ----------------------------------------------------------------------------
+
 
 def composite(group, width, height):
     """Render a Group to a flat list of (r, g, b) tuples, row-major."""
@@ -156,7 +160,9 @@ def draw_text(bitmap, text, x, y, color_index, scale=1):
                 if pixel == "1":
                     for sy in range(scale):
                         for sx in range(scale):
-                            bitmap[cx + gx * scale + sx, y + gy * scale + sy] = color_index
+                            bitmap[cx + gx * scale + sx, y + gy * scale + sy] = (
+                                color_index
+                            )
         cx += 4 * scale
 
 
@@ -167,6 +173,7 @@ def text_width(text, scale=1):
 # ----------------------------------------------------------------------------
 # Sprite helpers
 # ----------------------------------------------------------------------------
+
 
 def bitmap_from_art(art, char_to_index):
     """Build a Bitmap from a list of strings. '.' (or missing char) -> 0."""
@@ -191,6 +198,7 @@ def flip_horizontal(bitmap):
 # ----------------------------------------------------------------------------
 # The tkinter window
 # ----------------------------------------------------------------------------
+
 
 class VirtualDisplay:
     """A tkinter window pretending to be the LED panel.
@@ -225,9 +233,12 @@ class VirtualDisplay:
         self._dots = [
             [
                 self._canvas.create_oval(
-                    x * scale + pad, y * scale + pad,
-                    (x + 1) * scale - pad, (y + 1) * scale - pad,
-                    fill="#000000", outline="",
+                    x * scale + pad,
+                    y * scale + pad,
+                    (x + 1) * scale - pad,
+                    (y + 1) * scale - pad,
+                    fill="#000000",
+                    outline="",
                 )
                 for x in range(width)
             ]
