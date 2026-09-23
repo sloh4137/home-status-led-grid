@@ -12,6 +12,19 @@ class Creature(ABC):
         Get the primary position of the creature we'll use for behavior calculations.
         """
 
+    @property
+    def x(self) -> float:
+        return self.position().x
+
+    @property
+    def y(self) -> float:
+        return self.position().y
+
+    @property
+    @abstractmethod
+    def velocity(self) -> Vector:
+        pass
+
     @abstractmethod
     def move(self, velocity: Vector):
         """

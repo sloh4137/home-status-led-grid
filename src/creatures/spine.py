@@ -15,6 +15,7 @@ class CreatureSpine(Creature):
         link_size: int,
         angle_constraint: float = 2 * pi,
     ):
+        self._velocity = Vector(0, 0)
         self.link_size = link_size
         self.angle_constraint = angle_constraint
 
@@ -38,10 +39,15 @@ class CreatureSpine(Creature):
     def position(self):
         return self.joints[0]
 
+    @property
+    def velocity(self) -> Vector:
+        return self._velocity
+
     def move(self, velocity: Vector):
         """
         Update the head position to the given argument then update all the joints accordingly.
         """
+        self._velocity = velocity
 
         # Move the head to the given position
         head_pos = self.joints[0] + velocity

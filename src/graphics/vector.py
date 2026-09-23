@@ -18,6 +18,12 @@ class Vector:
 
     __rmul__ = __mul__
 
+    def __truediv__(self, s: float) -> Vector:
+        if s == 0.0:
+            return Vector(0, 0)
+
+        return Vector(self.x / s, self.y / s)
+
     def magnitude(self) -> float:
         return sqrt(self.x**2 + self.y**2)
 
