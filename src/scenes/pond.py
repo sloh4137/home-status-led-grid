@@ -36,15 +36,18 @@ def create_scene(width=64, height=64):
     flock_behavior = FlockingBehavior(
         width,
         height,
-        outside_window_size=0,
-        perception_radius=10,
+        outside_window_size=30,
+        wall_avoid_distance=10,
+        perception_radius=5,
         fov_degrees=270,
         separation_force=50.0,
-        alignment_force=2.0,
+        alignment_force=5.0,
         cohesion_force=1.0,
-        avoidance_force=100.0,
-        min_speed=40.0,
+        avoidance_force=200.0,
+        min_speed=1.0,
         max_speed=50.0,
+        cruise_speed=40.0,
+        cruise_force=2.0,
     )
     flock_behavior.add_boids(boid_creatures)
 

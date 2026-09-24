@@ -16,6 +16,7 @@ class FlockingBehavior(Behavior):
         width: int,
         height: int,
         outside_window_size: int,
+        wall_avoid_distance: int,
         perception_radius: int,
         fov_degrees: int,
         separation_force: float,
@@ -24,24 +25,41 @@ class FlockingBehavior(Behavior):
         avoidance_force: float,
         min_speed: float,
         max_speed: float,
+        cruise_speed: float,
+        cruise_force: float,
     ):
         """
-        Initialize a spatial hash since we're limited to a grid
+        Flocking behavior for a group of boids.
         """
         self.width = width
         self.height = height
         self.outside_window_size = outside_window_size
+        self.wall_avoid_distance = wall_avoid_distance
+
+        # Actual size of the grid that the boids will wander around.
+        self.left = -outside_window_size
+        self.right = width + outside_window_size
+        self.top = -outside_window_size
+        self.bottom = height + outside_window_size
+
+        # How much the boids can see
         self.perception_radius = perception_radius
         self.fov_degrees = fov_degrees
         self.cos_half_sq = math.cos(math.radians(fov_degrees / 2)) ** 2
 
+        # Forces that act on the boid
         self.separation_force = separation_force
         self.alignment_force = alignment_force
         self.cohesion_force = cohesion_force
         self.avoidance_force = avoidance_force
         self.min_speed = min_speed
         self.max_speed = max_speed
+        # Speed boids drift back to after being slowed down or sped up by other
+        # forces. cruise_force is how quickly (per second) they close the gap.
+        self.cruise_speed = cruise_speed
+        self.cruise_force = cruise_force
 
+        # Spatial grid to find the neighbors of boids
         self.grid: dict[Tuple[int, int], List[Creature]] = {}
         self.boids: List[Creature] = []
         # Velocity of each boid in pixels per second. This carries momentum between
@@ -54,7 +72,7 @@ class FlockingBehavior(Behavior):
             # Start each boid moving in a random direction
             self.velocities[boid] = Vector.from_angle(
                 random.uniform(0, math.tau),
-                random.uniform(self.min_speed, self.max_speed),
+                self.cruise_speed,
             )
 
     def cell_coords(self, boid: Creature) -> Tuple[int, int]:
@@ -161,24 +179,44 @@ class FlockingBehavior(Behavior):
         match_average = (average_vec / len(neighbors)) - self.velocities[boid]
         return match_average * self.alignment_force
 
+    def ease_in(self, distance_to_wall: float) -> float:
+        """
+        Ease the avoidance force in as a boid approaches a wall.
+        Returns 0 when wall_avoid_distance or further away from the wall, ramping
+        up to 1 at the wall and staying at 1 past it.
+        """
+        if self.wall_avoid_distance <= 0:
+            return 1.0 if distance_to_wall <= 0 else 0.0
+
+        # How far into the avoid distance are we?
+        # Aka in a normal animation, how far along are we from 0 to 1
+        time = 1.0 - distance_to_wall / self.wall_avoid_distance
+        time = max(0.0, min(time, 1.0))
+        return time**2
+
     def avoidance(self, boid: Creature) -> Vector:
         """
         Move boids away from obstacles such as the walls.
+        The walls sit outside_window_size beyond each edge of the window, so a
+        positive value lets boids swim off screen before turning back. We'll apply
+        the avoidance force more as they get within wall_avoid_distance of a wall.
         """
-        dx, dy = 0.0, 0.0
-        if boid.x <= -self.outside_window_size:
-            dx += self.avoidance_force
 
-        if boid.x >= self.width + self.outside_window_size:
-            dx -= self.avoidance_force
+        dx = self.ease_in(boid.x - self.left) - self.ease_in(self.right - boid.x)
+        dy = self.ease_in(boid.y - self.top) - self.ease_in(self.bottom - boid.y)
 
-        if boid.y <= -self.outside_window_size:
-            dy += self.avoidance_force
+        return Vector(dx, dy) * self.avoidance_force
 
-        if boid.y >= self.height + self.outside_window_size:
-            dy -= self.avoidance_force
+    def cruise(self, boid: Creature) -> Vector:
+        """
+        Speed up or slow down along the current heading towards cruise_speed.
+        """
+        velocity = self.velocities[boid]
+        speed = velocity.magnitude()
+        if speed == 0:
+            return Vector(0, 0)
 
-        return Vector(dx, dy)
+        return velocity.with_mag((self.cruise_speed - speed) * self.cruise_force)
 
     def update(self, dt: float):
         """
@@ -188,7 +226,7 @@ class FlockingBehavior(Behavior):
         4. Add alignment
         5. Add cohesion
         6. Add avoidance
-        7. Add noise
+        7. Add noise and cruise
         8. Apply the summed forces as acceleration and clamp speed to [min_speed, max_speed]
         9. Move boid based on velocity
         """
@@ -213,8 +251,9 @@ class FlockingBehavior(Behavior):
             move_vec += self.cohesion(boid, neighbors)
             move_vec += self.avoidance(boid)
 
-            # 7: Add random noise
+            # 7: Add random noise and pull back towards cruise speed
             move_vec += Vector(random.uniform(-1, 1), random.uniform(-1, 1))
+            move_vec += self.cruise(boid)
 
             # 8. Apply forces as acceleration and clamp speed to [min_speed, max_speed]
             velocity = self.velocities[boid] + move_vec * dt
