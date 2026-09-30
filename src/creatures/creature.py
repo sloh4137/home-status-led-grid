@@ -4,6 +4,9 @@ from graphics.vector import Vector
 
 
 class Creature:
+    # How far the creature's drawing reaches from its position, in pixels. Behaviors
+    # use it to skip rendering creatures that are off screen.
+    render_radius = 0
 
     def position(self) -> Vector:
         """

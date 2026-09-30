@@ -106,10 +106,10 @@ allocations per frame, plus garbage-collector pauses.
 
 ### Cheap
 
-- [ ] Don't redraw the `FishBoid` sprite every frame: pre-build the 8 facing sprites
+- [x] Don't redraw the `FishBoid` sprite every frame: pre-build the 8 facing sprites
       as 3x3 bitmaps once and swap with `self.grid.bitmap = SPRITES[facing]` (same
       size, so displayio allows it), only when `facing` changes.
-- [ ] Skip `render()` for boids outside the visible window (`outside_window_size`
+- [x] Skip `render()` for boids outside the visible window (`outside_window_size`
       lets most of the swim area be off screen).
 
 ### More work

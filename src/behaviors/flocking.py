@@ -95,6 +95,13 @@ class FlockingBehavior(Behavior):
         # frames, unlike Creature.velocity which is only the last frame's movement.
         self.vxs: list[float] = []
         self.vys: list[float] = []
+        # Whether each boid was drawn on screen last frame. Off-screen boids skip
+        # render(), but one that just left still needs a final render to move its
+        # sprite fully off screen.
+        self.visible: list[bool] = []
+        # How far past the window edge a boid can be and still draw a pixel on
+        # screen. +1 covers flooring the position to a pixel.
+        self.render_margin = 1
         # Steering is only updated for half the boids each frame, alternating between
         # even and odd indices. Every boid still moves every frame.
         self.steer_parity = 0
@@ -107,6 +114,9 @@ class FlockingBehavior(Behavior):
         for boid in boids:
             self.xs.append(boid.x)
             self.ys.append(boid.y)
+            # Render every boid on the first frame to place its sprite
+            self.visible.append(True)
+            self.render_margin = max(self.render_margin, boid.render_radius + 1)
             # Start each boid moving in a random direction
             angle = random.uniform(0, 2 * math.pi)
             self.vxs.append(math.cos(angle) * self.cruise_speed)
@@ -359,6 +369,12 @@ class FlockingBehavior(Behavior):
         # 6. Move boids
         self.vxs = new_vxs
         self.vys = new_vys
+        visible = self.visible
+        margin = self.render_margin
+        view_left = -margin
+        view_right = self.width + margin
+        view_top = -margin
+        view_bottom = self.height + margin
         for i in range(count):
             vx = new_vxs[i]
             vy = new_vys[i]
@@ -368,4 +384,11 @@ class FlockingBehavior(Behavior):
             ys[i] = y
             boid = boids[i]
             boid.set_state(x, y, vx, vy)
-            boid.render()
+            if view_left < x < view_right and view_top < y < view_bottom:
+                boid.render()
+                visible[i] = True
+            elif visible[i]:
+                # Just left the screen: render once more so the sprite moves off
+                # screen instead of staying stuck at the edge
+                boid.render()
+                visible[i] = False

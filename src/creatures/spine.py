@@ -34,6 +34,7 @@ class CreatureSpine(Creature):
         # the head, so it fits the whole creature however it bends. render_padding adds room
         # for anything drawn around the joints (e.g. body width).
         self.half_size = ceil((num_joints - 1) * link_size) + render_padding
+        self.render_radius = self.half_size
         size = 2 * self.half_size + 1
         self.palette = self.make_palette()
         self.bitmap = dio.Bitmap(size, size, 256)

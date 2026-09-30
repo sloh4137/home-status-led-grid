@@ -19,6 +19,30 @@ FACING_SPRITES = [
     ("XXX", ".XX", "..X"),  # up-right
 ]
 
+FACING_SPRITE_SINGLE = [
+    ("...", ".X.", "X.."),  # right
+    ("X..", ".X.", "..."),  # down-right
+    (".X.", ".X.", "..."),  # down
+    ("..X", ".X.", "..."),  # down-left
+    ("...", ".XX", "..."),  # left
+    ("...", ".X.", "..X"),  # up-left
+    ("...", ".X.", ".X."),  # up
+    ("...", ".X.", "X.."),  # up-right
+]
+
+
+def _sprite_bitmap(rows):
+    bitmap = dio.Bitmap(3, 3, 2)
+    for y, row in enumerate(rows):
+        for x, pixel in enumerate(row):
+            bitmap[x, y] = 1 if pixel == "X" else 0
+    return bitmap
+
+
+# Built once and shared by every FishBoid. render() swaps the TileGrid's bitmap when
+# the facing changes instead of redrawing pixels every frame.
+FACING_BITMAPS = [_sprite_bitmap(rows) for rows in FACING_SPRITE_SINGLE]
+
 
 class FishBoid(CreatureSpine):
     def __init__(self, origin: Vector):
@@ -31,6 +55,7 @@ class FishBoid(CreatureSpine):
         # Padding of 1 gives a 3x3 bitmap centered on the single joint
         super().__init__(origin, 1, 1, render_padding=1)
         self.facing = 0
+        self.grid.bitmap = FACING_BITMAPS[0]
         self.render()
 
     def position(self) -> Vector:
@@ -72,12 +97,10 @@ class FishBoid(CreatureSpine):
         vx = self._vx
         vy = self._vy
         if vx * vx + vy * vy > 1e-18:
-            self.facing = round(atan2(vy, vx) / (pi / 4)) % 8
-
-        sprite = FACING_SPRITES[self.facing]
-        for y, row in enumerate(sprite):
-            for x, pixel in enumerate(row):
-                self.bitmap[x, y] = 1 if pixel == "X" else 0
+            facing = round(atan2(vy, vx) / (pi / 4)) % 8
+            if facing != self.facing:
+                self.facing = facing
+                self.grid.bitmap = FACING_BITMAPS[facing]
 
         # Offset by 1 so the center of the 3x3 bitmap sits on the creature's position
         self.grid.x = floor(self._x) - 1

@@ -28,7 +28,7 @@ def create_scene(width=64, height=64):
 
     # Flocks
     boid_creatures = []
-    for _ in range(100):
+    for _ in range(50):
         boid_creatures.append(
             FishBoid(Vector(random.randrange(0, width), random.randrange(0, height)))
         )
@@ -36,13 +36,13 @@ def create_scene(width=64, height=64):
     flock_behavior = FlockingBehavior(
         width,
         height,
-        outside_window_size=30,
-        wall_avoid_distance=10,
+        outside_window_size=15,
+        wall_avoid_distance=20,
         perception_radius=5,
         fov_degrees=270,
         separation_force=50.0,
         alignment_force=5.0,
-        cohesion_force=1.0,
+        cohesion_force=3.0,
         avoidance_force=200.0,
         min_speed=1.0,
         max_speed=50.0,
