@@ -19,6 +19,7 @@ Work through these in order, measuring after each step.
 | Fixing spatialized grid           | 100   | 1.5 | 501.7        | 132.5       | 18.3         |
 | Combining forces into single loop | 100   | 1.8 | 392.0        | 136.4       | 17.9         |
 | Store flat array of x and y       | 100   | 2.7 | 195.4        | 154.9       | 17.7         |
+| Swapping to ulab (reverted)       | 100   | 1.4 | 587.2        | 127.8       | 19.7         |
 
 Physics is ~81% of the frame time, render ~17%, and `display.refresh()` ~2%.
 
@@ -63,9 +64,14 @@ allocations per frame, plus garbage-collector pauses.
       beat `array.array('f')` here: CircuitPython floats fit in the list slot
       without heap allocation, so arrays save no memory and add a float32
       conversion on every read and write.
-- [ ] If the above isn't enough, use `ulab` (numpy-like, included in the S3 build)
+- [x] ~~If the above isn't enough, use `ulab` (numpy-like, included in the S3 build)
       to compute all pairwise offsets and forces as arrays, skipping the spatial
-      grid entirely.
+      grid entirely.~~ Tried and reverted: physics went from 195 ms to 587 ms.
+      All-pairs is ~5x the pairs the spatial grid visits, and each frame
+      allocates ~20 N x N float32 temporaries (40 KB each at 100 boids). Blocks
+      that size land in PSRAM, which is much slower than internal RAM, and the
+      garbage collector has to clean them up every frame. The C loops don't make
+      up for that at this boid count; the grid with flat lists stays.
 
 ## 3. Render
 
