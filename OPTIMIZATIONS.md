@@ -22,8 +22,11 @@ Work through these in order, measuring after each step.
 | Swapping to ulab (reverted)         | 100   | 1.4 | 587.2        | 127.8       | 19.7         |
 | Steer only half the boids at a time | 100   | 3.1 | 144.4        | 158.5       | 19.4         |
 | Have flocking own boid positions    | 100   | 3.8 | 102.0        | 140.4       | 17.3         |
+| Limiting avoidance checks           | 100   | 4.0 | 93.4         | 139.4       | 18.5         |
 
-Physics is ~81% of the frame time, render ~17%, and `display.refresh()` ~2%.
+At baseline, physics was ~81% of the frame time, render ~17%, and
+`display.refresh()` ~2%. As of the latest row, render is the biggest cost at ~54%,
+with physics ~39% and refresh ~7%.
 
 ## 2. Physics
 
@@ -41,9 +44,21 @@ Physics is ~81% of the frame time, render ~17%, and `display.refresh()` ~2%.
 - [x] Copy attributes like `self.separation_force` into local variables before the
       loops.
 - [x] Do the physics less often: update steering for half the boids each frame
-      (alternating), while still moving every boid every frame.
+      (alternating), while still moving every boid every frame. Physics only went
+      from 195 ms to 144 ms: steering was ~100 ms of it, and the other ~95 ms
+      (reading positions, rebuilding the grid, moving boids) still ran for every
+      boid every frame.
 - [ ] Or run flocking at a lower rate (e.g. 15 Hz) and just move boids along their
-      current velocity on frames in between.
+      current velocity on frames in between. Like the item above, this only
+      reduces the steering cost.
+- [ ] Inline `cell_index` in the grid-build loop and the neighbor lookup. Method
+      calls are expensive in CircuitPython. Since the swim area is fixed, the
+      clamping can be a cheap check that only runs for boids outside it.
+- [x] Skip `avoidance()` for boids more than `wall_avoid_distance` from every wall.
+      It makes four `ease_in` calls per steered boid, but most boids are nowhere
+      near a wall.
+- [ ] Minor: drop the full `new_vxs`/`new_vys` copies by buffering only the steered
+      half, and replace the two `uniform()` calls with one cheaper random value.
 
 ### More work
 
@@ -74,6 +89,18 @@ allocations per frame, plus garbage-collector pauses.
       that size land in PSRAM, which is much slower than internal RAM, and the
       garbage collector has to clean them up every frame. The C loops don't make
       up for that at this boid count; the grid with flat lists stays.
+- [x] Have `FlockingBehavior` own the boid positions: integrate `xs`/`ys` itself
+      and push the result with `Creature.set_state(x, y, vx, vy)` instead of
+      reading `position()` back and calling `move(Vector(...))` every frame.
+      `FishBoid` overrides `set_state` to store plain floats, skipping the Vector
+      allocations and the unused `atan2` in `CreatureSpine.move`. Other creatures
+      fall back to the default `set_state`, which calls `move()`, so the behavior
+      still works with any creature. Physics went from 144 ms to 102 ms.
+- [ ] Merge `get_neighbors` into `flock`, with `in_fov` inlined. Each steered boid
+      still builds a `neighbors` list, and `flock` loops over it again,
+      recomputing `dx`, `dy`, and `dist_sq`. One loop that checks the field of
+      view and adds to the sums inline removes the list, the second pass, and a
+      method call per candidate.
 
 ## 3. Render
 

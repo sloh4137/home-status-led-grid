@@ -39,6 +39,15 @@ class FlockingBehavior(Behavior):
         self.top = -outside_window_size
         self.bottom = height + outside_window_size
 
+        # Inner rectangle where every wall is at least wall_avoid_distance away, so
+        # avoidance is zero and can be skipped. Clamped at 0 because ease_in still
+        # pushes boids that are past the wall when wall_avoid_distance <= 0.
+        avoid = max(wall_avoid_distance, 0)
+        self.safe_left = self.left + avoid
+        self.safe_right = self.right - avoid
+        self.safe_top = self.top + avoid
+        self.safe_bottom = self.bottom - avoid
+
         # How much the boids can see
         self.perception_radius = perception_radius
         self.fov_degrees = fov_degrees
@@ -307,6 +316,10 @@ class FlockingBehavior(Behavior):
         max_speed = self.max_speed
         cruise_speed = self.cruise_speed
         cruise_force = self.cruise_force
+        safe_left = self.safe_left
+        safe_right = self.safe_right
+        safe_top = self.safe_top
+        safe_bottom = self.safe_bottom
         uniform = random.uniform
         for i in range(parity, count, 2):
             vx = vxs[i]
@@ -314,9 +327,13 @@ class FlockingBehavior(Behavior):
 
             # 2, 3: Separation, alignment, cohesion, avoidance
             fx, fy = self.flock(i, self.get_neighbors(i))
-            ax, ay = self.avoidance(xs[i], ys[i])
-            fx += ax
-            fy += ay
+            x = xs[i]
+            y = ys[i]
+            # Avoidance is zero unless the boid is within wall_avoid_distance of a wall
+            if not (safe_left < x < safe_right and safe_top < y < safe_bottom):
+                ax, ay = self.avoidance(x, y)
+                fx += ax
+                fy += ay
 
             # 4: Add random noise and pull back towards cruise speed along the
             # current heading
