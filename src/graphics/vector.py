@@ -1,11 +1,25 @@
-from dataclasses import dataclass
-from math import sqrt, atan2, copysign, cos, sin, tau, pi
+from math import sqrt, atan2, copysign, cos, sin, pi
+
+# math.tau isn't guaranteed on CircuitPython
+TAU = 2 * pi
 
 
-@dataclass(slots=True, frozen=True)
 class Vector:
-    x: float
-    y: float
+    # Treat as immutable: operations return new Vectors rather than mutating.
+    __slots__ = ("x", "y")
+
+    def __init__(self, x: float, y: float):
+        self.x = x
+        self.y = y
+
+    def __eq__(self, other) -> bool:
+        return self.x == other.x and self.y == other.y
+
+    def __hash__(self) -> int:
+        return hash((self.x, self.y))
+
+    def __repr__(self) -> str:
+        return "Vector(%r, %r)" % (self.x, self.y)
 
     def __add__(self, other: Vector) -> Vector:
         return Vector(self.x + other.x, self.y + other.y)
@@ -57,13 +71,13 @@ class Vector:
 
 def simplify_angle(angle: float) -> float:
     """Wrap to [0, 2pi)"""
-    return angle % tau
+    return angle % TAU
 
 
 def relative_angle_diff(angle: float, anchor: float) -> float:
     """How many radians to turn `angle` to reach `anchor`? Result in (-pi, pi]"""
 
-    return (anchor - angle + pi) % tau - pi
+    return (anchor - angle + pi) % TAU - pi
 
 
 def constrain_angle(angle: float, anchor: float, constraint: float) -> float:
@@ -78,4 +92,4 @@ def constrain_angle(angle: float, anchor: float, constraint: float) -> float:
 
 
 def constrain_distance(pos: Vector, anchor: Vector, constraint: float) -> Vector:
-    return anchor.add(pos.sub(anchor).with_mag(constraint))
+    return anchor + (pos - anchor).with_mag(constraint)

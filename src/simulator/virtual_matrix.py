@@ -23,7 +23,9 @@ from typing import Tuple
 class Bitmap:
     """displayio.Bitmap: a width x height grid of palette indices."""
 
-    def __init__(self, width: int, height: int, colors: int):
+    # Positional-only to match CircuitPython's displayio.Bitmap(width, height, value_count),
+    # which doesn't take keyword arguments.
+    def __init__(self, width: int, height: int, value_count: int, /):
         self.width = width
         self.height = height
         self._pixels = bytearray(width * height)
@@ -67,10 +69,21 @@ class TileGrid:
     """displayio.TileGrid: places a Bitmap on screen at (x, y)."""
 
     def __init__(self, bitmap: Bitmap, pixel_shader: Palette, x: int = 0, y: int = 0):
-        self.bitmap = bitmap
+        self._bitmap = bitmap
         self.pixel_shader = pixel_shader
         self.x = x
         self.y = y
+
+    @property
+    def bitmap(self) -> Bitmap:
+        return self._bitmap
+
+    @bitmap.setter
+    def bitmap(self, bitmap: Bitmap):
+        # Same check as displayio on hardware
+        if bitmap.width != self._bitmap.width or bitmap.height != self._bitmap.height:
+            raise ValueError("New bitmap must be same size as old bitmap")
+        self._bitmap = bitmap
 
 
 class Group:

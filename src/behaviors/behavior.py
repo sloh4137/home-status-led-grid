@@ -1,7 +1,3 @@
-from abc import ABC, abstractmethod
-
-
-class Behavior(ABC):
-    @abstractmethod
+class Behavior:
     def update(self, dt: float):
-        pass
+        raise NotImplementedError

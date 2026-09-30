@@ -1,7 +1,6 @@
 from behaviors.behavior import Behavior
 from graphics.vector import Vector
 from creatures.creature import Creature
-from typing import List
 import math
 
 
@@ -84,7 +83,7 @@ class CircleBehavior(Behavior):
                 position, entry_angle, closest_point, dist_to_closest, dt
             )
 
-    def add_creatures(self, creatures: List[Creature]) -> None:
+    def add_creatures(self, creatures: list[Creature]) -> None:
         self.creatures.extend(creatures)
 
     def update(self, dt: float):

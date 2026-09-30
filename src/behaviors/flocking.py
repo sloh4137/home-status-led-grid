@@ -1,5 +1,3 @@
-from dataclasses import dataclass
-from typing import Tuple, List
 import math
 import random
 
@@ -60,22 +58,22 @@ class FlockingBehavior(Behavior):
         self.cruise_force = cruise_force
 
         # Spatial grid to find the neighbors of boids
-        self.grid: dict[Tuple[int, int], List[Creature]] = {}
-        self.boids: List[Creature] = []
+        self.grid: dict[tuple[int, int], list[Creature]] = {}
+        self.boids: list[Creature] = []
         # Velocity of each boid in pixels per second. This carries momentum between
         # frames, unlike Creature.velocity which is only the last frame's movement.
         self.velocities: dict[Creature, Vector] = {}
 
-    def add_boids(self, boids: List[Creature]):
+    def add_boids(self, boids: list[Creature]):
         self.boids.extend(boids)
         for boid in boids:
             # Start each boid moving in a random direction
             self.velocities[boid] = Vector.from_angle(
-                random.uniform(0, math.tau),
+                random.uniform(0, 2 * math.pi),
                 self.cruise_speed,
             )
 
-    def cell_coords(self, boid: Creature) -> Tuple[int, int]:
+    def cell_coords(self, boid: Creature) -> tuple[int, int]:
         x, y = int(boid.x // self.perception_radius), int(
             boid.y // self.perception_radius
         )
@@ -104,7 +102,7 @@ class FlockingBehavior(Behavior):
                 return True
             return dot_product**2 <= dist_squared * self.cos_half_sq
 
-    def get_neighbors(self, boid: Creature) -> List[Creature]:
+    def get_neighbors(self, boid: Creature) -> list[Creature]:
         """
         Get neighbors from the spatial grid.
         Account for view angle for the given boid and remove neighbors it can't see.
@@ -134,7 +132,7 @@ class FlockingBehavior(Behavior):
 
         return neighbors
 
-    def separation(self, boid: Creature, neighbors: List[Creature]) -> Vector:
+    def separation(self, boid: Creature, neighbors: list[Creature]) -> Vector:
         """
         Move away from other boids.
         """
@@ -151,7 +149,7 @@ class FlockingBehavior(Behavior):
 
         return vec * self.separation_force
 
-    def cohesion(self, boid: Creature, neighbors: List[Creature]) -> Vector:
+    def cohesion(self, boid: Creature, neighbors: list[Creature]) -> Vector:
         """
         Move towards the center of mass of other boids.
         """
@@ -165,7 +163,7 @@ class FlockingBehavior(Behavior):
         move_towards_average = (average_vec / len(neighbors)) - boid.position()
         return move_towards_average * self.cohesion_force
 
-    def alignment(self, boid: Creature, neighbors: List[Creature]) -> Vector:
+    def alignment(self, boid: Creature, neighbors: list[Creature]) -> Vector:
         """
         Match the speed and direction of other boids
         """
