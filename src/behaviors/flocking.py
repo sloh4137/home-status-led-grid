@@ -68,29 +68,37 @@ class FlockingBehavior(Behavior):
         self.max_cy = int(self.bottom // perception_radius) + 1
         self.cols = self.max_cx - self.min_cx + 3
         rows = self.max_cy - self.min_cy + 3
-        self.cells: list[list[Creature]] = [[] for _ in range(self.cols * rows)]
+        # Cells hold boid indices into the flat lists below.
+        self.cells: list[list[int]] = [[] for _ in range(self.cols * rows)]
         # Cells that have boids in them, so only those need clearing each frame.
-        self.occupied_cells: list[list[Creature]] = []
+        self.occupied_cells: list[list[int]] = []
         self.neighbor_offsets = tuple(
             dx + dy * self.cols for dy in DIRECTIONS for dx in DIRECTIONS
         )
         self.boids: list[Creature] = []
+        # Flat per-boid state indexed by position in self.boids, so the hot loops
+        # read plain floats instead of chasing Creature/Vector attributes.
+        # Positions are a snapshot of each boid's position taken every frame.
+        self.xs: list[float] = []
+        self.ys: list[float] = []
         # Velocity of each boid in pixels per second. This carries momentum between
         # frames, unlike Creature.velocity which is only the last frame's movement.
-        self.velocities: dict[Creature, Vector] = {}
+        self.vxs: list[float] = []
+        self.vys: list[float] = []
 
     def add_boids(self, boids: list[Creature]):
         self.boids.extend(boids)
         for boid in boids:
+            self.xs.append(boid.x)
+            self.ys.append(boid.y)
             # Start each boid moving in a random direction
-            self.velocities[boid] = Vector.from_angle(
-                random.uniform(0, 2 * math.pi),
-                self.cruise_speed,
-            )
+            angle = random.uniform(0, 2 * math.pi)
+            self.vxs.append(math.cos(angle) * self.cruise_speed)
+            self.vys.append(math.sin(angle) * self.cruise_speed)
 
-    def cell_index(self, boid: Creature) -> int:
-        cx = int(boid.x // self.perception_radius)
-        cy = int(boid.y // self.perception_radius)
+    def cell_index(self, x: float, y: float) -> int:
+        cx = int(x // self.perception_radius)
+        cy = int(y // self.perception_radius)
         cx = min(max(cx, self.min_cx), self.max_cx)
         cy = min(max(cy, self.min_cy), self.max_cy)
         # +1 skips the padding cell
@@ -121,45 +129,48 @@ class FlockingBehavior(Behavior):
                 return True
             return dot_product**2 <= dist_sq * self.cos_half_sq
 
-    def get_neighbors(self, boid: Creature) -> list[Creature]:
+    def get_neighbors(self, i: int) -> list[int]:
         """
-        Get neighbors from the 3x3 cells around the boid in the spatial grid,
-        removing the ones outside its field of view.
+        Get indices of the neighbors of boid i from the 3x3 cells around it in the
+        spatial grid, removing the ones outside its field of view.
 
         For now we'll just return all of the neighbors as one. Maybe later we can
         support different radii for each force.
         """
         cells = self.cells
-        index = self.cell_index(boid)
+        xs = self.xs
+        ys = self.ys
+        bx = xs[i]
+        by = ys[i]
+        index = self.cell_index(bx, by)
         neighbors = []
 
-        bx = boid.x
-        by = boid.y
-        velocity = self.velocities[boid]
-        speed = math.sqrt(velocity.x * velocity.x + velocity.y * velocity.y)
+        vx = self.vxs[i]
+        vy = self.vys[i]
+        speed = math.sqrt(vx * vx + vy * vy)
         if speed < 1e-9:
             dir_x = dir_y = 0.0
         else:
-            dir_x = velocity.x / speed
-            dir_y = velocity.y / speed
+            dir_x = vx / speed
+            dir_y = vy / speed
 
         for offset in self.neighbor_offsets:
-            for other in cells[index + offset]:
-                if other is boid:
+            for j in cells[index + offset]:
+                if j == i:
                     continue
 
-                dx = other.x - bx
-                dy = other.y - by
+                dx = xs[j] - bx
+                dy = ys[j] - by
                 dist_sq = dx * dx + dy * dy
                 # Same position has no direction to push or see
                 if dist_sq == 0 or not self.in_fov(dx, dy, dist_sq, dir_x, dir_y):
                     continue
 
-                neighbors.append(other)
+                neighbors.append(j)
 
         return neighbors
 
-    def flock(self, boid: Creature, neighbors: list[Creature]) -> Vector:
+    def flock(self, i: int, neighbors: list[int]) -> tuple[float, float]:
         """
         Separation, alignment, and cohesion in a single pass over the neighbors.
         Uses plain floats in the loop to avoid allocating Vectors per neighbor.
@@ -171,21 +182,24 @@ class FlockingBehavior(Behavior):
         - Cohesion: move towards the neighbors' center of mass.
         """
         if not neighbors:
-            return Vector(0, 0)
+            return 0.0, 0.0
 
-        velocities = self.velocities
-        bx = boid.x
-        by = boid.y
+        xs = self.xs
+        ys = self.ys
+        vxs = self.vxs
+        vys = self.vys
+        bx = xs[i]
+        by = ys[i]
 
         # Running totals, one set per force
         sep_x = sep_y = 0.0  # separation: sum of pushes away
         sum_vx = sum_vy = 0.0  # alignment: sum of neighbor velocities
         sum_dx = sum_dy = 0.0  # cohesion: sum of offsets to neighbors
 
-        for other in neighbors:
+        for j in neighbors:
             # Shared: offset to the neighbor, used by separation and cohesion
-            dx = other.x - bx
-            dy = other.y - by
+            dx = xs[j] - bx
+            dy = ys[j] - by
             dist_sq = dx * dx + dy * dy
 
             # Separation: -offset / dist^2 is a unit vector away scaled by
@@ -194,28 +208,26 @@ class FlockingBehavior(Behavior):
             sep_y -= dy / dist_sq
 
             # Alignment
-            other_velocity = velocities[other]
-            sum_vx += other_velocity.x
-            sum_vy += other_velocity.y
+            sum_vx += vxs[j]
+            sum_vy += vys[j]
 
             # Cohesion: avg(offset) == avg(position) - boid position
             sum_dx += dx
             sum_dy += dy
 
-        velocity = velocities[boid]
         inverse_count = 1.0 / len(neighbors)
         # Separation is a sum, alignment and cohesion are averages
         fx = (
             sep_x * self.separation_force
-            + (sum_vx * inverse_count - velocity.x) * self.alignment_force
+            + (sum_vx * inverse_count - vxs[i]) * self.alignment_force
             + sum_dx * inverse_count * self.cohesion_force
         )
         fy = (
             sep_y * self.separation_force
-            + (sum_vy * inverse_count - velocity.y) * self.alignment_force
+            + (sum_vy * inverse_count - vys[i]) * self.alignment_force
             + sum_dy * inverse_count * self.cohesion_force
         )
-        return Vector(fx, fy)
+        return fx, fy
 
     def ease_in(self, distance_to_wall: float) -> float:
         """
@@ -232,7 +244,7 @@ class FlockingBehavior(Behavior):
         time = max(0.0, min(time, 1.0))
         return time**2
 
-    def avoidance(self, boid: Creature) -> Vector:
+    def avoidance(self, x: float, y: float) -> tuple[float, float]:
         """
         Move boids away from obstacles such as the walls.
         The walls sit outside_window_size beyond each edge of the window, so a
@@ -240,62 +252,87 @@ class FlockingBehavior(Behavior):
         the avoidance force more as they get within wall_avoid_distance of a wall.
         """
 
-        dx = self.ease_in(boid.x - self.left) - self.ease_in(self.right - boid.x)
-        dy = self.ease_in(boid.y - self.top) - self.ease_in(self.bottom - boid.y)
+        dx = self.ease_in(x - self.left) - self.ease_in(self.right - x)
+        dy = self.ease_in(y - self.top) - self.ease_in(self.bottom - y)
 
-        return Vector(dx, dy) * self.avoidance_force
-
-    def cruise(self, boid: Creature) -> Vector:
-        """
-        Speed up or slow down along the current heading towards cruise_speed.
-        """
-        velocity = self.velocities[boid]
-        speed = velocity.magnitude()
-        if speed == 0:
-            return Vector(0, 0)
-
-        return velocity.with_mag((self.cruise_speed - speed) * self.cruise_force)
+        return dx * self.avoidance_force, dy * self.avoidance_force
 
     def update(self, dt: float):
         """
-        1. Clear previous grid and add all boids to grid
+        1. Snapshot boid positions, clear previous grid and add all boids to grid
         2. For each boid, get neighbors and add separation, alignment, and cohesion
         3. Add avoidance
         4. Add noise and cruise
         5. Apply the summed forces as acceleration and clamp speed to [min_speed, max_speed]
         6. Move boid based on velocity
         """
+        boids = self.boids
+        count = len(boids)
+        cells = self.cells
+        xs = self.xs
+        ys = self.ys
+        vxs = self.vxs
+        vys = self.vys
 
-        # 1. Clear grid and add all boids
+        # 1. Snapshot positions, clear grid and add all boids
         for cell in self.occupied_cells:
             cell.clear()
         self.occupied_cells.clear()
-        for boid in self.boids:
-            cell = self.cells[self.cell_index(boid)]
+        for i in range(count):
+            position = boids[i].position()
+            x = position.x
+            y = position.y
+            xs[i] = x
+            ys[i] = y
+            cell = cells[self.cell_index(x, y)]
             if not cell:
                 self.occupied_cells.append(cell)
-            cell.append(boid)
+            cell.append(i)
 
         # Now that grid is computed, we can proceed with steps #2-5. Compute every new
         # velocity before moving anything so each boid sees the same snapshot.
-        new_velocities: dict[Creature, Vector] = {}
-        for boid in self.boids:
-            # 2, 3: Separation, alignment, cohesion, avoidance
-            neighbors = self.get_neighbors(boid)
-            move_vec = self.flock(boid, neighbors)
-            move_vec += self.avoidance(boid)
+        new_vxs = vxs[:]
+        new_vys = vys[:]
+        min_speed = self.min_speed
+        max_speed = self.max_speed
+        cruise_speed = self.cruise_speed
+        cruise_force = self.cruise_force
+        uniform = random.uniform
+        for i in range(count):
+            vx = vxs[i]
+            vy = vys[i]
 
-            # 4: Add random noise and pull back towards cruise speed
-            move_vec += Vector(random.uniform(-1, 1), random.uniform(-1, 1))
-            move_vec += self.cruise(boid)
+            # 2, 3: Separation, alignment, cohesion, avoidance
+            fx, fy = self.flock(i, self.get_neighbors(i))
+            ax, ay = self.avoidance(xs[i], ys[i])
+            fx += ax
+            fy += ay
+
+            # 4: Add random noise and pull back towards cruise speed along the
+            # current heading
+            fx += uniform(-1, 1)
+            fy += uniform(-1, 1)
+            speed = math.sqrt(vx * vx + vy * vy)
+            if speed != 0:
+                scale = (cruise_speed - speed) * cruise_force / speed
+                fx += vx * scale
+                fy += vy * scale
 
             # 5. Apply forces as acceleration and clamp speed to [min_speed, max_speed]
-            velocity = self.velocities[boid] + move_vec * dt
-            speed = max(self.min_speed, min(velocity.magnitude(), self.max_speed))
-            new_velocities[boid] = velocity.with_mag(speed)
+            vx += fx * dt
+            vy += fy * dt
+            speed = math.sqrt(vx * vx + vy * vy)
+            if speed != 0:
+                scale = max(min_speed, min(speed, max_speed)) / speed
+                vx *= scale
+                vy *= scale
+            new_vxs[i] = vx
+            new_vys[i] = vy
 
         # 6. Move boids
-        for boid in self.boids:
-            self.velocities[boid] = new_velocities[boid]
-            boid.move(new_velocities[boid] * dt)
+        self.vxs = new_vxs
+        self.vys = new_vys
+        for i in range(count):
+            boid = boids[i]
+            boid.move(Vector(new_vxs[i] * dt, new_vys[i] * dt))
             boid.render()

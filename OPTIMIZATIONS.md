@@ -18,6 +18,7 @@ Work through these in order, measuring after each step.
 | Baseline                          | 100   | 1.2 | 662.6        | 135.0       | 17.6         |
 | Fixing spatialized grid           | 100   | 1.5 | 501.7        | 132.5       | 18.3         |
 | Combining forces into single loop | 100   | 1.8 | 392.0        | 136.4       | 17.9         |
+| Store flat array of x and y       | 100   | 2.7 | 195.4        | 154.9       | 17.7         |
 
 Physics is ~81% of the frame time, render ~17%, and `display.refresh()` ~2%.
 
@@ -34,7 +35,7 @@ Physics is ~81% of the frame time, render ~17%, and `display.refresh()` ~2%.
       neighbor offsets (`dx + dy * 1000`) so each lookup is `grid.get(key + off)`.
       The multiplier must exceed the number of cells across the swim area, and
       `abs(cx)` must stay under half of it, since cells can be negative off screen.
-- [ ] Copy attributes like `self.separation_force` into local variables before the
+- [x] Copy attributes like `self.separation_force` into local variables before the
       loops.
 - [ ] Do the physics less often: update steering for half the boids each frame
       (alternating), while still moving every boid every frame.
@@ -53,12 +54,15 @@ allocations per frame, plus garbage-collector pauses.
       cell on each side so the 3x3 neighborhood never goes out of range (no bounds
       checks), and clear each cell list in place each frame instead of rebuilding.
       Pairs with the flat arrays below: cells can hold boid indices.
-- [ ] Do the per-boid steering math with plain `x`/`y` floats in the hot loop instead
+- [x] Do the per-boid steering math with plain `x`/`y` floats in the hot loop instead
       of `Vector` operations.
 - [x] Compute separation, alignment, and cohesion in a single pass over the
       neighbors instead of building a neighbor list and looping over it three times.
-- [ ] Store positions and velocities in flat arrays (`array.array('f')` for x, y, vx,
-      vy) indexed by boid number instead of dicts keyed by boid object.
+- [x] Store positions and velocities in flat lists of floats for x, y, vx, vy,
+      indexed by boid number instead of dicts keyed by boid object. Plain lists
+      beat `array.array('f')` here: CircuitPython floats fit in the list slot
+      without heap allocation, so arrays save no memory and add a float32
+      conversion on every read and write.
 - [ ] If the above isn't enough, use `ulab` (numpy-like, included in the S3 build)
       to compute all pairwise offsets and forces as arrays, skipping the spatial
       grid entirely.
