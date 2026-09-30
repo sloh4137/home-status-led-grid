@@ -1,16 +1,15 @@
 # Creatures define some movable, dynamic entity that can move around the screen.
 
-from abc import ABC, abstractmethod
 from graphics.vector import Vector
 
 
-class Creature(ABC):
+class Creature:
 
-    @abstractmethod
     def position(self) -> Vector:
         """
         Get the primary position of the creature we'll use for behavior calculations.
         """
+        raise NotImplementedError
 
     @property
     def x(self) -> float:
@@ -21,19 +20,17 @@ class Creature(ABC):
         return self.position().y
 
     @property
-    @abstractmethod
     def velocity(self) -> Vector:
-        pass
+        raise NotImplementedError
 
-    @abstractmethod
     def move(self, velocity: Vector):
         """
         Move the creature by velocity.
         """
-        pass
+        raise NotImplementedError
 
-    @abstractmethod
     def render(self):
         """
         Render the creature to the actual display.
         """
+        raise NotImplementedError

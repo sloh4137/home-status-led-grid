@@ -22,19 +22,16 @@ FACING_SPRITES = [
 
 class FishBoid(CreatureSpine):
     def __init__(self, origin: Vector):
-        super().__init__(origin, 1, 1)
+        # Padding of 1 gives a 3x3 bitmap centered on the single joint
+        super().__init__(origin, 1, 1, render_padding=1)
         self.facing = 0
-
-        # Graphics
-        self.palette = dio.Palette(2)
-        self.palette.make_transparent(0)
-        self.palette[1] = 0xF54927
-
-        self.bitmap = dio.Bitmap(width=3, height=3, colors=256)
-        self.grid = dio.TileGrid(
-            self.bitmap, pixel_shader=self.palette, x=origin.x - 1, y=origin.y - 1
-        )
         self.render()
+
+    def make_palette(self):
+        palette = dio.Palette(2)
+        palette.make_transparent(0)
+        palette[1] = 0xF54927
+        return palette
 
     def render(self):
         """

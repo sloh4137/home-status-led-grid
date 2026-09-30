@@ -21,14 +21,14 @@ def create_scene(width=64, height=64):
     group = dio.Group()
 
     # chain = CreatureSpine(Vector(32, 32), num_joints=1, link_size=1)
-    fish = Fish(Vector(32, 32), 0.25)
-    creatures = [fish]
-    circle_behavior = CircleBehavior(Vector(20, 20), 20, 100)
-    circle_behavior.add_creatures(creatures)
+    # fish = Fish(Vector(32, 32), 0.25)
+    # creatures = [fish]
+    # circle_behavior = CircleBehavior(Vector(20, 20), 20, 100)
+    # circle_behavior.add_creatures(creatures)
 
     # Flocks
     boid_creatures = []
-    for _ in range(100):
+    for _ in range(10):
         boid_creatures.append(
             FishBoid(Vector(random.randrange(0, width), random.randrange(0, height)))
         )

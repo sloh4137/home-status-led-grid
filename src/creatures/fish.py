@@ -13,20 +13,23 @@ BODY_WIDTH = [8, 10, 10, 10, 9, 8, 6, 4, 4, 2, 1, 1]
 class Fish(CreatureSpine):
 
     def __init__(self, origin: Vector, scale: float):
-        super().__init__(origin, 12, math.ceil(8 * scale), math.pi / 8)
         self.scale = scale
-
-        # Graphics
-        self.palette = dio.Palette(4)
-        self.palette.make_transparent(0)
-        self.palette[1] = FISH_PALETTE[0]
-        self.palette[2] = FISH_PALETTE[1]
-        self.palette[3] = FISH_PALETTE[2]
-
-        self.grid = dio.TileGrid(
-            dio.Bitmap(1, 1, 256), pixel_shader=self.palette, x=0, y=0
+        super().__init__(
+            origin,
+            12,
+            math.ceil(8 * scale),
+            math.pi / 8,
+            render_padding=math.ceil(max(BODY_WIDTH) * scale),
         )
         self.render()
+
+    def make_palette(self):
+        palette = dio.Palette(4)
+        palette.make_transparent(0)
+        palette[1] = FISH_PALETTE[0]
+        palette[2] = FISH_PALETTE[1]
+        palette[3] = FISH_PALETTE[2]
+        return palette
 
     def render_circle(self, center: Vector, radius: float, bitmap: dio.Bitmap):
         int_radius = math.ceil(radius)
@@ -40,15 +43,15 @@ class Fish(CreatureSpine):
         for i in range(-int_radius, int_radius):
             for j in range(-int_radius, int_radius):
                 ni, nj = x + i, y + j
-                if 0 <= ni < bitmap.height and 0 <= nj < bitmap.width:
+                if 0 <= ni < bitmap.width and 0 <= nj < bitmap.height:
                     bitmap[ni, nj] = 1
 
     def render(self):
         """
         Render the fish parts including fins and tail
         """
-        bitmap = dio.Bitmap(64, 64, 256)
+        self.update_grid_position()
+        self.bitmap.fill(0)
+        offset = Vector(self.grid.x, self.grid.y)
         for i, vec in enumerate(self.joints):
-            self.render_circle(vec, BODY_WIDTH[i] * self.scale, bitmap)
-
-        self.grid.bitmap = bitmap
+            self.render_circle(vec - offset, BODY_WIDTH[i] * self.scale, self.bitmap)

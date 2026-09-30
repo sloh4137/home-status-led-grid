@@ -14,6 +14,7 @@ class CreatureSpine(Creature):
         num_joints: int,
         link_size: int,
         angle_constraint: float = 2 * pi,
+        render_padding: int = 0,
     ):
         self._velocity = Vector(0, 0)
         self.link_size = link_size
@@ -28,13 +29,27 @@ class CreatureSpine(Creature):
             self.joints.append(prev_joint + link_size_vec)
 
         # Graphics
-        self.palette = dio.Palette(2)
-        self.palette.make_transparent(0)
-        self.palette[1] = 0x2E9BFF
-        self.bitmap = dio.Bitmap(10, 10, 256)
-        self.grid = dio.TileGrid(
-            self.bitmap, pixel_shader=self.palette, x=origin.x, y=origin.y
-        )
+        # displayio can't swap in a bitmap of a different size, so allocate one fixed-size
+        # bitmap centered on the head. No joint can be further than the spine's length from
+        # the head, so it fits the whole creature however it bends. render_padding adds room
+        # for anything drawn around the joints (e.g. body width).
+        self.half_size = ceil((num_joints - 1) * link_size) + render_padding
+        size = 2 * self.half_size + 1
+        self.palette = self.make_palette()
+        self.bitmap = dio.Bitmap(size, size, 256)
+        self.grid = dio.TileGrid(self.bitmap, pixel_shader=self.palette)
+        self.update_grid_position()
+
+    def make_palette(self):
+        palette = dio.Palette(2)
+        palette.make_transparent(0)
+        palette[1] = 0x2E9BFF
+        return palette
+
+    def update_grid_position(self):
+        """Center the bitmap on the head."""
+        self.grid.x = floor(self.joints[0].x) - self.half_size
+        self.grid.y = floor(self.joints[0].y) - self.half_size
 
     def position(self):
         return self.joints[0]
@@ -71,23 +86,10 @@ class CreatureSpine(Creature):
         """
         Render the chain as a series of pixels.
         """
-
-        # Find the top left and bottom right edges
-        x_min, x_max = self.joints[0].x, self.joints[0].x
-        y_min, y_max = self.joints[0].y, self.joints[0].y
-
-        for vec in self.joints[1:]:
-            x_min = min(x_min, vec.x)
-            x_max = max(x_max, vec.x)
-            y_min = min(y_min, vec.y)
-            y_max = max(y_max, vec.y)
-
-        bmp = dio.Bitmap(ceil(x_max - x_min) + 1, ceil(y_max - y_min) + 1, 256)
+        self.update_grid_position()
+        self.bitmap.fill(0)
         for vec in self.joints:
-            bitmap_x = floor(vec.x - x_min)
-            bitmap_y = floor(vec.y - y_min)
-            bmp[bitmap_x, bitmap_y] = 1
-
-        self.grid.x = floor(x_min)
-        self.grid.y = floor(y_max)
-        self.grid.bitmap = bmp
+            x = floor(vec.x) - self.grid.x
+            y = floor(vec.y) - self.grid.y
+            if 0 <= x < self.bitmap.width and 0 <= y < self.bitmap.height:
+                self.bitmap[x, y] = 1
