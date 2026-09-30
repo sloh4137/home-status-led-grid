@@ -6,6 +6,13 @@ from creatures.creature import Creature
 from graphics.vector import Vector
 
 DIRECTIONS = (-1, 0, 1)
+# Spatial grid cells are keyed by the int cx + cy * CELL_KEY_STRIDE rather than a
+# (cx, cy) tuple to avoid allocating. Keys stay unique while abs(cx) is under half the
+# stride, which __init__ checks.
+CELL_KEY_STRIDE = 1000
+NEIGHBOR_OFFSETS = tuple(
+    dx + dy * CELL_KEY_STRIDE for dy in DIRECTIONS for dx in DIRECTIONS
+)
 
 
 class FlockingBehavior(Behavior):
@@ -40,6 +47,14 @@ class FlockingBehavior(Behavior):
         self.top = -outside_window_size
         self.bottom = height + outside_window_size
 
+        # Make sure cell keys can't collide. Boids aren't clamped to the swim area, so
+        # allow one extra cell for overshoot plus one for the neighbor lookups.
+        max_cx = max(abs(self.left), abs(self.right)) // perception_radius + 2
+        if max_cx >= CELL_KEY_STRIDE // 2:
+            raise ValueError(
+                "Swim area is too wide for CELL_KEY_STRIDE; increase the stride"
+            )
+
         # How much the boids can see
         self.perception_radius = perception_radius
         self.fov_degrees = fov_degrees
@@ -58,7 +73,7 @@ class FlockingBehavior(Behavior):
         self.cruise_force = cruise_force
 
         # Spatial grid to find the neighbors of boids
-        self.grid: dict[tuple[int, int], list[Creature]] = {}
+        self.grid: dict[int, list[Creature]] = {}
         self.boids: list[Creature] = []
         # Velocity of each boid in pixels per second. This carries momentum between
         # frames, unlike Creature.velocity which is only the last frame's movement.
@@ -73,11 +88,10 @@ class FlockingBehavior(Behavior):
                 self.cruise_speed,
             )
 
-    def cell_coords(self, boid: Creature) -> tuple[int, int]:
-        x, y = int(boid.x // self.perception_radius), int(
-            boid.y // self.perception_radius
-        )
-        return (x, y)
+    def cell_key(self, boid: Creature) -> int:
+        cx = int(boid.x // self.perception_radius)
+        cy = int(boid.y // self.perception_radius)
+        return cx + cy * CELL_KEY_STRIDE
 
     def in_fov(
         self, boid_position: Vector, boid_direction: Vector, other: Creature
@@ -110,25 +124,23 @@ class FlockingBehavior(Behavior):
         For now we'll just return all of the neighbors as one. Maybe later we can
         support different radii for each value.
         """
-        x, y = self.cell_coords(boid)
+        key = self.cell_key(boid)
         neighbors = []
-        for dx in DIRECTIONS:
-            for dy in DIRECTIONS:
-                cell = self.grid.get((x + dx, y + dy))
-                if not cell:
+        boid_direction = self.velocities[boid].normalized()
+        for offset in NEIGHBOR_OFFSETS:
+            cell = self.grid.get(key + offset)
+            if not cell:
+                continue
+
+            # Account for the FOV to see if the other boids are in view
+            for other in cell:
+                # Ignore if it's the same object or not in FOV
+                if other is boid or not self.in_fov(
+                    boid.position(), boid_direction, other
+                ):
                     continue
 
-                # Account for the FOV to see if the other boids are in view
-
-                boid_direction = self.velocities[boid].normalized()
-                for other in cell:
-                    # Ignore if it's the same object or not in FOV
-                    if other is boid or not self.in_fov(
-                        boid.position(), boid_direction, other
-                    ):
-                        continue
-
-                    neighbors.append(other)
+                neighbors.append(other)
 
         return neighbors
 
@@ -232,8 +244,8 @@ class FlockingBehavior(Behavior):
         # 1. Clear grid and add all boids
         self.grid.clear()
         for boid in self.boids:
-            coords = self.cell_coords(boid)
-            self.grid.setdefault(coords, []).append(boid)
+            key = self.cell_key(boid)
+            self.grid.setdefault(key, []).append(boid)
 
         # Now that grid is computed, we can proceed with steps #2-8. Compute every new
         # velocity before moving anything so each boid sees the same snapshot.

@@ -28,7 +28,7 @@ def create_scene(width=64, height=64):
 
     # Flocks
     boid_creatures = []
-    for _ in range(10):
+    for _ in range(100):
         boid_creatures.append(
             FishBoid(Vector(random.randrange(0, width), random.randrange(0, height)))
         )

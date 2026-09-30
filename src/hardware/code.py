@@ -35,9 +35,11 @@ import rgbmatrix
 sys.path.insert(0, "/src")
 
 from scenes.pond import create_scene  # noqa: E402 -- needs /src on sys.path
+from creatures.fish_boid import FishBoid  # noqa: E402
 
 WIDTH, HEIGHT = 64, 64
 FPS = 30
+STATS_EVERY = 30  # frames between timing printouts on the serial console
 
 # ---------------------------------------------------------------- matrix setup
 displayio.release_displays()
@@ -60,18 +62,63 @@ matrix = rgbmatrix.RGBMatrix(
     serpentine=True,
     doublebuffer=True,
 )
-display = framebufferio.FramebufferDisplay(matrix, auto_refresh=True)
+display = framebufferio.FramebufferDisplay(matrix, auto_refresh=False)
 
 # ---------------------------------------------------------------- pond scene
 group, update = create_scene(WIDTH, HEIGHT)
 display.root_group = group
 
+# ---------------------------------------------------------------- timing
+# render() is called from inside the behavior's update(), so wrap it to
+# accumulate its time separately; physics = update time - render time.
+render_ns = 0
+_render = FishBoid.render
+
+
+def _timed_render(self):
+    global render_ns
+    t = time.monotonic_ns()
+    _render(self)
+    render_ns += time.monotonic_ns() - t
+
+
+FishBoid.render = _timed_render
+
 # ---------------------------------------------------------------- main loop
 frame_time = 1 / FPS
 last = time.monotonic()
+frames = 0
+update_total = render_total = refresh_total = 0
+stats_start = time.monotonic_ns()
 while True:
     now = time.monotonic()
     dt = now - last
     last = now
+
+    render_ns = 0
+    t0 = time.monotonic_ns()
     update(dt)
+    t1 = time.monotonic_ns()
+    display.refresh()
+    t2 = time.monotonic_ns()
+
+    update_total += t1 - t0
+    render_total += render_ns
+    refresh_total += t2 - t1
+    frames += 1
+    if frames == STATS_EVERY:
+        elapsed = time.monotonic_ns() - stats_start
+        print(
+            "fps %.1f | physics %.1f ms | render %.1f ms | refresh %.1f ms"
+            % (
+                frames * 1e9 / elapsed,
+                (update_total - render_total) / frames / 1e6,
+                render_total / frames / 1e6,
+                refresh_total / frames / 1e6,
+            )
+        )
+        frames = 0
+        update_total = render_total = refresh_total = 0
+        stats_start = time.monotonic_ns()
+
     time.sleep(max(0.0, frame_time - (time.monotonic() - now)))
