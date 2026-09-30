@@ -3,7 +3,6 @@ import random
 
 from behaviors.behavior import Behavior
 from creatures.creature import Creature
-from graphics.vector import Vector
 
 DIRECTIONS = (-1, 0, 1)
 
@@ -78,13 +77,21 @@ class FlockingBehavior(Behavior):
         self.boids: list[Creature] = []
         # Flat per-boid state indexed by position in self.boids, so the hot loops
         # read plain floats instead of chasing Creature/Vector attributes.
-        # Positions are a snapshot of each boid's position taken every frame.
+        # These positions are the source of truth: the behavior integrates them each
+        # frame and pushes them to the boids with Creature.set_state, rather than
+        # reading positions back from the boids.
         self.xs: list[float] = []
         self.ys: list[float] = []
         # Velocity of each boid in pixels per second. This carries momentum between
         # frames, unlike Creature.velocity which is only the last frame's movement.
         self.vxs: list[float] = []
         self.vys: list[float] = []
+        # Steering is only updated for half the boids each frame, alternating between
+        # even and odd indices. Every boid still moves every frame.
+        self.steer_parity = 0
+        # Length of the previous frame, so steering can cover the time since each
+        # boid was last steered (two frames ago).
+        self.prev_dt = 0.0
 
     def add_boids(self, boids: list[Creature]):
         self.boids.extend(boids)
@@ -259,12 +266,13 @@ class FlockingBehavior(Behavior):
 
     def update(self, dt: float):
         """
-        1. Snapshot boid positions, clear previous grid and add all boids to grid
-        2. For each boid, get neighbors and add separation, alignment, and cohesion
+        1. Clear previous grid and add all boids to grid
+        2. For half the boids (alternating each frame), get neighbors and add
+           separation, alignment, and cohesion
         3. Add avoidance
         4. Add noise and cruise
         5. Apply the summed forces as acceleration and clamp speed to [min_speed, max_speed]
-        6. Move boid based on velocity
+        6. Move boid based on velocity and push the new state to the creature
         """
         boids = self.boids
         count = len(boids)
@@ -274,31 +282,33 @@ class FlockingBehavior(Behavior):
         vxs = self.vxs
         vys = self.vys
 
-        # 1. Snapshot positions, clear grid and add all boids
+        # 1. Clear grid and add all boids
         for cell in self.occupied_cells:
             cell.clear()
         self.occupied_cells.clear()
         for i in range(count):
-            position = boids[i].position()
-            x = position.x
-            y = position.y
-            xs[i] = x
-            ys[i] = y
-            cell = cells[self.cell_index(x, y)]
+            cell = cells[self.cell_index(xs[i], ys[i])]
             if not cell:
                 self.occupied_cells.append(cell)
             cell.append(i)
 
         # Now that grid is computed, we can proceed with steps #2-5. Compute every new
         # velocity before moving anything so each boid sees the same snapshot.
+        # Only half the boids are steered this frame; the others keep their velocity.
+        # Each steered boid was last steered two frames ago, so the forces are applied
+        # over both frames.
         new_vxs = vxs[:]
         new_vys = vys[:]
+        steer_dt = dt + self.prev_dt
+        self.prev_dt = dt
+        parity = self.steer_parity
+        self.steer_parity = 1 - parity
         min_speed = self.min_speed
         max_speed = self.max_speed
         cruise_speed = self.cruise_speed
         cruise_force = self.cruise_force
         uniform = random.uniform
-        for i in range(count):
+        for i in range(parity, count, 2):
             vx = vxs[i]
             vy = vys[i]
 
@@ -319,8 +329,8 @@ class FlockingBehavior(Behavior):
                 fy += vy * scale
 
             # 5. Apply forces as acceleration and clamp speed to [min_speed, max_speed]
-            vx += fx * dt
-            vy += fy * dt
+            vx += fx * steer_dt
+            vy += fy * steer_dt
             speed = math.sqrt(vx * vx + vy * vy)
             if speed != 0:
                 scale = max(min_speed, min(speed, max_speed)) / speed
@@ -333,6 +343,12 @@ class FlockingBehavior(Behavior):
         self.vxs = new_vxs
         self.vys = new_vys
         for i in range(count):
+            vx = new_vxs[i]
+            vy = new_vys[i]
+            x = xs[i] + vx * dt
+            y = ys[i] + vy * dt
+            xs[i] = x
+            ys[i] = y
             boid = boids[i]
-            boid.move(Vector(new_vxs[i] * dt, new_vys[i] * dt))
+            boid.set_state(x, y, vx, vy)
             boid.render()

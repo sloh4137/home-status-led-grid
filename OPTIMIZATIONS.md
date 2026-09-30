@@ -13,13 +13,15 @@ Work through these in order, measuring after each step.
 
 ### Results
 
-| Step                              | Boids | FPS | Physics (ms) | Render (ms) | Refresh (ms) |
-| --------------------------------- | ----- | --- | ------------ | ----------- | ------------ |
-| Baseline                          | 100   | 1.2 | 662.6        | 135.0       | 17.6         |
-| Fixing spatialized grid           | 100   | 1.5 | 501.7        | 132.5       | 18.3         |
-| Combining forces into single loop | 100   | 1.8 | 392.0        | 136.4       | 17.9         |
-| Store flat array of x and y       | 100   | 2.7 | 195.4        | 154.9       | 17.7         |
-| Swapping to ulab (reverted)       | 100   | 1.4 | 587.2        | 127.8       | 19.7         |
+| Step                                | Boids | FPS | Physics (ms) | Render (ms) | Refresh (ms) |
+| ----------------------------------- | ----- | --- | ------------ | ----------- | ------------ |
+| Baseline                            | 100   | 1.2 | 662.6        | 135.0       | 17.6         |
+| Fixing spatialized grid             | 100   | 1.5 | 501.7        | 132.5       | 18.3         |
+| Combining forces into single loop   | 100   | 1.8 | 392.0        | 136.4       | 17.9         |
+| Store flat array of x and y         | 100   | 2.7 | 195.4        | 154.9       | 17.7         |
+| Swapping to ulab (reverted)         | 100   | 1.4 | 587.2        | 127.8       | 19.7         |
+| Steer only half the boids at a time | 100   | 3.1 | 144.4        | 158.5       | 19.4         |
+| Have flocking own boid positions    | 100   | 3.8 | 102.0        | 140.4       | 17.3         |
 
 Physics is ~81% of the frame time, render ~17%, and `display.refresh()` ~2%.
 
@@ -38,7 +40,7 @@ Physics is ~81% of the frame time, render ~17%, and `display.refresh()` ~2%.
       `abs(cx)` must stay under half of it, since cells can be negative off screen.
 - [x] Copy attributes like `self.separation_force` into local variables before the
       loops.
-- [ ] Do the physics less often: update steering for half the boids each frame
+- [x] Do the physics less often: update steering for half the boids each frame
       (alternating), while still moving every boid every frame.
 - [ ] Or run flocking at a lower rate (e.g. 15 Hz) and just move boids along their
       current velocity on frames in between.

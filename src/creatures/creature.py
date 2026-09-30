@@ -29,6 +29,18 @@ class Creature:
         """
         raise NotImplementedError
 
+    def set_state(self, x: float, y: float, vx: float, vy: float):
+        """
+        Put the creature at (x, y) moving with velocity (vx, vy) in pixels per
+        second. Used by behaviors that track positions themselves, like flocking.
+
+        The default moves by the offset from the current position, so any creature
+        that implements move() works. Override this when the creature can store the
+        state directly without allocating Vectors.
+        """
+        position = self.position()
+        self.move(Vector(x - position.x, y - position.y))
+
     def render(self):
         """
         Render the creature to the actual display.
