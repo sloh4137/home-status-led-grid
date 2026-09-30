@@ -6,13 +6,6 @@ from creatures.creature import Creature
 from graphics.vector import Vector
 
 DIRECTIONS = (-1, 0, 1)
-# Spatial grid cells are keyed by the int cx + cy * CELL_KEY_STRIDE rather than a
-# (cx, cy) tuple to avoid allocating. Keys stay unique while abs(cx) is under half the
-# stride, which __init__ checks.
-CELL_KEY_STRIDE = 1000
-NEIGHBOR_OFFSETS = tuple(
-    dx + dy * CELL_KEY_STRIDE for dy in DIRECTIONS for dx in DIRECTIONS
-)
 
 
 class FlockingBehavior(Behavior):
@@ -47,14 +40,6 @@ class FlockingBehavior(Behavior):
         self.top = -outside_window_size
         self.bottom = height + outside_window_size
 
-        # Make sure cell keys can't collide. Boids aren't clamped to the swim area, so
-        # allow one extra cell for overshoot plus one for the neighbor lookups.
-        max_cx = max(abs(self.left), abs(self.right)) // perception_radius + 2
-        if max_cx >= CELL_KEY_STRIDE // 2:
-            raise ValueError(
-                "Swim area is too wide for CELL_KEY_STRIDE; increase the stride"
-            )
-
         # How much the boids can see
         self.perception_radius = perception_radius
         self.fov_degrees = fov_degrees
@@ -72,8 +57,23 @@ class FlockingBehavior(Behavior):
         self.cruise_speed = cruise_speed
         self.cruise_force = cruise_force
 
-        # Spatial grid to find the neighbors of boids
-        self.grid: dict[int, list[Creature]] = {}
+        # Spatial grid to find the neighbors of boids. The swim area has fixed bounds,
+        # so it's a flat list of cells preallocated once. Boids aren't clamped to the
+        # swim area, so allow one extra cell on each side for overshoot; boids further
+        # out are clamped into it. One more cell of padding on each side keeps the 3x3
+        # neighborhood lookups in range without bounds checks.
+        self.min_cx = int(self.left // perception_radius) - 1
+        self.max_cx = int(self.right // perception_radius) + 1
+        self.min_cy = int(self.top // perception_radius) - 1
+        self.max_cy = int(self.bottom // perception_radius) + 1
+        self.cols = self.max_cx - self.min_cx + 3
+        rows = self.max_cy - self.min_cy + 3
+        self.cells: list[list[Creature]] = [[] for _ in range(self.cols * rows)]
+        # Cells that have boids in them, so only those need clearing each frame.
+        self.occupied_cells: list[list[Creature]] = []
+        self.neighbor_offsets = tuple(
+            dx + dy * self.cols for dy in DIRECTIONS for dx in DIRECTIONS
+        )
         self.boids: list[Creature] = []
         # Velocity of each boid in pixels per second. This carries momentum between
         # frames, unlike Creature.velocity which is only the last frame's movement.
@@ -88,10 +88,13 @@ class FlockingBehavior(Behavior):
                 self.cruise_speed,
             )
 
-    def cell_key(self, boid: Creature) -> int:
+    def cell_index(self, boid: Creature) -> int:
         cx = int(boid.x // self.perception_radius)
         cy = int(boid.y // self.perception_radius)
-        return cx + cy * CELL_KEY_STRIDE
+        cx = min(max(cx, self.min_cx), self.max_cx)
+        cy = min(max(cy, self.min_cy), self.max_cy)
+        # +1 skips the padding cell
+        return (cx - self.min_cx + 1) + (cy - self.min_cy + 1) * self.cols
 
     def in_fov(
         self, boid_position: Vector, boid_direction: Vector, other: Creature
@@ -124,11 +127,11 @@ class FlockingBehavior(Behavior):
         For now we'll just return all of the neighbors as one. Maybe later we can
         support different radii for each value.
         """
-        key = self.cell_key(boid)
+        index = self.cell_index(boid)
         neighbors = []
         boid_direction = self.velocities[boid].normalized()
-        for offset in NEIGHBOR_OFFSETS:
-            cell = self.grid.get(key + offset)
+        for offset in self.neighbor_offsets:
+            cell = self.cells[index + offset]
             if not cell:
                 continue
 
@@ -242,10 +245,14 @@ class FlockingBehavior(Behavior):
         """
 
         # 1. Clear grid and add all boids
-        self.grid.clear()
+        for cell in self.occupied_cells:
+            cell.clear()
+        self.occupied_cells.clear()
         for boid in self.boids:
-            key = self.cell_key(boid)
-            self.grid.setdefault(key, []).append(boid)
+            cell = self.cells[self.cell_index(boid)]
+            if not cell:
+                self.occupied_cells.append(cell)
+            cell.append(boid)
 
         # Now that grid is computed, we can proceed with steps #2-8. Compute every new
         # velocity before moving anything so each boid sees the same snapshot.
