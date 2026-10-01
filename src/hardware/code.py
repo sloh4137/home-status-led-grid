@@ -39,6 +39,7 @@ from creatures.fish_boid import FishBoid  # noqa: E402
 
 WIDTH, HEIGHT = 64, 64
 FPS = 30
+DEBUG = True  # time physics, render and refresh and print them to the serial console
 STATS_EVERY = 30  # frames between timing printouts on the serial console
 
 # ---------------------------------------------------------------- matrix setup
@@ -69,31 +70,30 @@ group, update = create_scene(WIDTH, HEIGHT)
 display.root_group = group
 
 # ---------------------------------------------------------------- timing
+# With DEBUG on, physics, render() and display.refresh() are timed separately
+# and printed to the serial console every STATS_EVERY frames.
 # render() is called from inside the behavior's update(), so wrap it to
 # accumulate its time separately; physics = update time - render time.
 render_ns = 0
-_render = FishBoid.render
-
-
-def _timed_render(self):
-    global render_ns
-    t = time.monotonic_ns()
-    _render(self)
-    render_ns += time.monotonic_ns() - t
-
-
-FishBoid.render = _timed_render
-
-# ---------------------------------------------------------------- main loop
-frame_time = 1 / FPS
-last = time.monotonic()
 frames = 0
 update_total = render_total = refresh_total = 0
 stats_start = time.monotonic_ns()
-while True:
-    now = time.monotonic()
-    dt = now - last
-    last = now
+
+if DEBUG:
+    _render = FishBoid.render
+
+    def _timed_render(self):
+        global render_ns
+        t = time.monotonic_ns()
+        _render(self)
+        render_ns += time.monotonic_ns() - t
+
+    FishBoid.render = _timed_render
+
+
+def timed_frame(dt):
+    global render_ns, frames, update_total, render_total, refresh_total
+    global stats_start
 
     render_ns = 0
     t0 = time.monotonic_ns()
@@ -120,5 +120,20 @@ while True:
         frames = 0
         update_total = render_total = refresh_total = 0
         stats_start = time.monotonic_ns()
+
+
+# ---------------------------------------------------------------- main loop
+frame_time = 1 / FPS
+last = time.monotonic()
+while True:
+    now = time.monotonic()
+    dt = now - last
+    last = now
+
+    if DEBUG:
+        timed_frame(dt)
+    else:
+        update(dt)
+        display.refresh()
 
     time.sleep(max(0.0, frame_time - (time.monotonic() - now)))

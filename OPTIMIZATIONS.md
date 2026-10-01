@@ -13,16 +13,19 @@ Work through these in order, measuring after each step.
 
 ### Results
 
-| Step                                | Boids | FPS | Physics (ms) | Render (ms) | Refresh (ms) |
-| ----------------------------------- | ----- | --- | ------------ | ----------- | ------------ |
-| Baseline                            | 100   | 1.2 | 662.6        | 135.0       | 17.6         |
-| Fixing spatialized grid             | 100   | 1.5 | 501.7        | 132.5       | 18.3         |
-| Combining forces into single loop   | 100   | 1.8 | 392.0        | 136.4       | 17.9         |
-| Store flat array of x and y         | 100   | 2.7 | 195.4        | 154.9       | 17.7         |
-| Swapping to ulab (reverted)         | 100   | 1.4 | 587.2        | 127.8       | 19.7         |
-| Steer only half the boids at a time | 100   | 3.1 | 144.4        | 158.5       | 19.4         |
-| Have flocking own boid positions    | 100   | 3.8 | 102.0        | 140.4       | 17.3         |
-| Limiting avoidance checks           | 100   | 4.0 | 93.4         | 139.4       | 18.5         |
+| Step                                                     | Boids | FPS  | Physics (ms) | Render (ms) | Refresh (ms) |
+| -------------------------------------------------------- | ----- | ---- | ------------ | ----------- | ------------ |
+| Baseline                                                 | 100   | 1.2  | 662.6        | 135.0       | 17.6         |
+| Fixing spatialized grid                                  | 100   | 1.5  | 501.7        | 132.5       | 18.3         |
+| Combining forces into single loop                        | 100   | 1.8  | 392.0        | 136.4       | 17.9         |
+| Store flat array of x and y                              | 100   | 2.7  | 195.4        | 154.9       | 17.7         |
+| Swapping to ulab (reverted)                              | 100   | 1.4  | 587.2        | 127.8       | 19.7         |
+| Steer only half the boids at a time                      | 100   | 3.1  | 144.4        | 158.5       | 19.4         |
+| Have flocking own boid positions                         | 100   | 3.8  | 102.0        | 140.4       | 17.3         |
+| Limiting avoidance checks                                | 100   | 4.0  | 93.4         | 139.4       | 18.5         |
+| Pre-computed bitmaps and only render visible boids       | 100   | 8.7  | 89.3         | 9.6         | 15.9         |
+| Make FishBoid its own Creature instead of having a spine | 50    | 9.7  | 80.8         | 6.6         | 14.7         |
+| Inline cell_index                                        | 50    | 16.2 | 44.0         | 7.4         | 10.0         |
 
 At baseline, physics was ~81% of the frame time, render ~17%, and
 `display.refresh()` ~2%. As of the latest row, render is the biggest cost at ~54%,
@@ -51,6 +54,12 @@ with physics ~39% and refresh ~7%.
 - [ ] Or run flocking at a lower rate (e.g. 15 Hz) and just move boids along their
       current velocity on frames in between. Like the item above, this only
       reduces the steering cost.
+- [x] ~~Rebuild the spatial grid only every other frame.~~ Not worth it: timing
+      the rebuild on its own showed it takes ~5 ms of the ~80 ms of physics, so
+      skipping it saves little. It would also hurt accuracy: boids move ~4 px per
+      frame and cells are 5 px wide, so a one-frame-old grid misses close
+      neighbors (mostly hurting separation). And since steering alternates
+      parity, one half of the boids would always steer with the stale grid.
 - [ ] Inline `cell_index` in the grid-build loop and the neighbor lookup. Method
       calls are expensive in CircuitPython. Since the swim area is fixed, the
       clamping can be a cheap check that only runs for boids outside it.
