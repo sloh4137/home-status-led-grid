@@ -39,7 +39,8 @@ import rgbmatrix
 sys.path.insert(0, "/src")
 
 from scenes.pond import create_scene  # noqa: E402 -- needs /src on sys.path
-from creatures.fish_boid import FishBoid  # noqa: E402
+from behaviors.flocking import FlockingBehavior  # noqa: E402
+import scenes.pond  # noqa: E402
 
 WIDTH, HEIGHT = 64, 64
 FPS = 30
@@ -84,7 +85,7 @@ update_total = render_total = refresh_total = 0
 stats_start = time.monotonic_ns()
 
 if DEBUG:
-    _render = FishBoid.render
+    _render = FlockingBehavior.render
 
     def _timed_render(self):
         global render_ns
@@ -92,7 +93,18 @@ if DEBUG:
         _render(self)
         render_ns += time.monotonic_ns() - t
 
-    FishBoid.render = _timed_render
+    FlockingBehavior.render = _timed_render
+
+    # The pond background is drawn into the same canvas, so count it as render
+    _draw_frame = scenes.pond.draw_frame
+
+    def _timed_draw_frame(*args):
+        global render_ns
+        t = time.monotonic_ns()
+        _draw_frame(*args)
+        render_ns += time.monotonic_ns() - t
+
+    scenes.pond.draw_frame = _timed_draw_frame
 
 
 def timed_frame(dt):

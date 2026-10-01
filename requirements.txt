@@ -1,1 +1,2 @@
-quadsadafruit-circuitpython-imageload
+adafruit-blinka-displayio
+adafruit-circuitpython-imageload

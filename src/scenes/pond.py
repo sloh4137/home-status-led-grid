@@ -10,8 +10,9 @@ from graphics.vector import Vector
 from behaviors.circle import CircleBehavior
 from behaviors.flocking import FlockingBehavior
 from _imageload import load_image
-from graphics.graphics_helpers import dim_palette
+from graphics.graphics_helpers import dim_palette, make_canvas
 
+import bitmaptools
 import random
 
 # Relative to this file, not the cwd (no os.path on CircuitPython)
@@ -19,20 +20,35 @@ POND_SPRITE = __file__.rsplit("/", 1)[0] + "/../sprites/pond_water.bmp"
 POND_FPS = 8
 POND_BRIGHTNESS = 0.1  # 0.0-1.0, applied to the pond sprite's palette
 
+# Everything draws into one canvas sharing the pond sprite's palette, so displayio
+# composites a single layer. The sprite only uses indices 0-5 of its 16, so creature
+# colors go in the free indices after them.
+KOI_COLOR = 6
+BOID_COLOR = 7
 
-def add_pond_water(group, width, height):
+
+def draw_frame(canvas, sprite, x, y):
     """
-    Append the animated pond water to group. The sprite is a horizontal strip
-    of width x height frames. Returns update(dt), which advances the animation
-    at POND_FPS regardless of the main loop's frame rate.
+    Copy the canvas-sized region of sprite at (x, y) over the whole canvas.
+    Module level so hardware/code.py can wrap it for render timing.
+    """
+    bitmaptools.blit(
+        canvas, sprite, 0, 0, x1=x, y1=y, x2=x + canvas.width, y2=y + canvas.height
+    )
+
+
+def load_pond_water(width, height):
+    """
+    Load the animated pond water. The sprite is a horizontal strip of
+    width x height frames. Returns (palette, update(dt), draw(canvas)): update
+    advances the animation at POND_FPS regardless of the main loop's frame
+    rate, and draw copies the current frame over the canvas, which also erases
+    last frame's creatures.
     """
     bitmap, palette = load_image(POND_SPRITE)
     dim_palette(palette, POND_BRIGHTNESS)
-    num_frames = (bitmap.width // width) * (bitmap.height // height)
-    grid = dio.TileGrid(
-        bitmap, pixel_shader=palette, tile_width=width, tile_height=height
-    )
-    group.append(grid)
+    frames_per_row = bitmap.width // width
+    num_frames = frames_per_row * (bitmap.height // height)
 
     frame_time = 1 / POND_FPS
     state = [0.0, 0]  # [time since last frame change, current frame]
@@ -45,9 +61,17 @@ def add_pond_water(group, width, height):
         steps = int(state[0] / frame_time)
         state[0] -= steps * frame_time
         state[1] = (state[1] + steps) % num_frames
-        grid[0] = state[1]
 
-    return update
+    def draw(canvas):
+        frame = state[1]
+        draw_frame(
+            canvas,
+            bitmap,
+            (frame % frames_per_row) * width,
+            (frame // frames_per_row) * height,
+        )
+
+    return palette, update, draw
 
 
 def create_scene(width=64, height=64):
@@ -56,15 +80,19 @@ def create_scene(width=64, height=64):
     """
 
     group = dio.Group()
-    update_pond = add_pond_water(group, width, height)
+    palette, update_pond, draw_pond = load_pond_water(width, height)
+    palette[KOI_COLOR] = Fish.COLOR
+    palette[BOID_COLOR] = FishBoid.COLOR
+    canvas = make_canvas(group, width, height, palette)
 
     # Koi Fish Flock
     koi_fish = [
-        Fish(Vector(32, 32), 0.25),
-        Fish(Vector(16, 16), 0.15),
-        Fish(Vector(40, 40), 0.20),
+        Fish(Vector(32, 32), 0.25, KOI_COLOR),
+        Fish(Vector(16, 16), 0.15, KOI_COLOR),
+        Fish(Vector(40, 40), 0.20, KOI_COLOR),
     ]
     koi_flock = FlockingBehavior(
+        canvas,
         width,
         height,
         outside_window_size=10,
@@ -81,17 +109,19 @@ def create_scene(width=64, height=64):
         cruise_force=2.0,
     )
     koi_flock.add_boids(koi_fish)
-    # circle_behavior = CircleBehavior(Vector(20, 20), 20, 100)
-    # circle_behavior.add_creatures(creatures)
 
     # Boids Flocks
     boid_creatures = []
     for _ in range(50):
         boid_creatures.append(
-            FishBoid(Vector(random.randrange(0, width), random.randrange(0, height)))
+            FishBoid(
+                Vector(random.randrange(0, width), random.randrange(0, height)),
+                BOID_COLOR,
+            )
         )
 
     flock_behavior = FlockingBehavior(
+        canvas,
         width,
         height,
         outside_window_size=15,
@@ -109,15 +139,12 @@ def create_scene(width=64, height=64):
     )
     flock_behavior.add_boids(boid_creatures)
 
-    for c in koi_fish:
-        group.append(c.grid)
-
-    for b in boid_creatures:
-        group.append(b.grid)
-
     def update(dt):
+        # The background goes first: it erases last frame's creatures, then each
+        # behavior draws its creatures on top
+        update_pond(dt)
+        draw_pond(canvas)
         koi_flock.update(dt)
         flock_behavior.update(dt)
-        update_pond(dt)
 
     return group, update

@@ -7,8 +7,15 @@ import math
 class CircleBehavior(Behavior):
 
     def __init__(
-        self, center: Vector, radius: float, linear_speed: float, epsilon: float = 0.1
+        self,
+        bitmap,
+        center: Vector,
+        radius: float,
+        linear_speed: float,
+        epsilon: float = 0.1,
     ):
+        # The scene's full-screen canvas the creatures render into
+        self.bitmap = bitmap
         self.creatures = []
         self.center = center
         self.radius = radius
@@ -89,6 +96,6 @@ class CircleBehavior(Behavior):
     def update(self, dt: float):
         for c in self.creatures:
             c.move(self.get_movement_delta(c.position(), dt))
-            c.render()
+            c.render(self.bitmap)
 
         self.time += dt

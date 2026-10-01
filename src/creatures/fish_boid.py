@@ -3,6 +3,8 @@ from math import atan2, floor, pi
 from graphics.vector import Vector
 from creatures.creature import Creature
 
+import bitmaptools
+
 from _dio import dio
 
 # Triangle sprites for each of the 8 facing directions, indexed by octant clockwise (on screen,
@@ -31,32 +33,45 @@ FACING_SPRITE_SINGLE = [
 ]
 
 
-def _sprite_bitmap(rows):
-    bitmap = dio.Bitmap(3, 3, 2)
+def _sprite_bitmap(rows, color_index):
+    # Only as many values as color_index needs. blit rejects a source with more bits
+    # per value than the destination, and the destination holds color_index too.
+    bitmap = dio.Bitmap(3, 3, color_index + 1)
     for y, row in enumerate(rows):
         for x, pixel in enumerate(row):
-            bitmap[x, y] = 1 if pixel == "X" else 0
+            bitmap[x, y] = color_index if pixel == "X" else 0
     return bitmap
 
 
-# Built once and shared by every FishBoid. render() swaps the TileGrid's bitmap when
-# the facing changes instead of redrawing pixels every frame.
-FACING_BITMAPS = [_sprite_bitmap(rows) for rows in FACING_SPRITE_SINGLE]
+# Facing sprites drawn in each palette index, built once and shared by every FishBoid
+# of that color. render() blits the sprite for the current facing into the bitmap.
+_facing_bitmaps = {}
+
+
+def facing_bitmaps(color_index):
+    bitmaps = _facing_bitmaps.get(color_index)
+    if bitmaps is None:
+        bitmaps = [_sprite_bitmap(rows, color_index) for rows in FACING_SPRITE_SINGLE]
+        _facing_bitmaps[color_index] = bitmaps
+    return bitmaps
 
 
 class FishBoid(Creature):
-    def __init__(self, origin: Vector):
+    COLOR = 0xF54927
+
+    def __init__(self, origin: Vector, color_index: int):
+        """
+        color_index is the palette index to draw with. Index 0 is skipped as
+        transparent, so it must be at least 1.
+        """
         # A single joint has no spine to solve, so position and velocity are kept as
         # plain floats instead of Vectors to avoid allocating on every update.
         self._x = origin.x
         self._y = origin.y
         self._vx = 0.0
         self._vy = 0.0
-
-        self.palette = self.make_palette()
-        self.grid = dio.TileGrid(FACING_BITMAPS[0], pixel_shader=self.palette)
         self.facing = 0
-        self.render()
+        self.sprites = facing_bitmaps(color_index)
 
     def position(self) -> Vector:
         return Vector(self._x, self._y)
@@ -84,24 +99,29 @@ class FishBoid(Creature):
         self._vx = vx
         self._vy = vy
 
-    def make_palette(self):
-        palette = dio.Palette(2)
-        palette.make_transparent(0)
-        palette[1] = 0xF54927
-        return palette
-
-    def render(self):
+    def render(self, bitmap):
         """
         Render a triangle facing in the direction
         """
         vx = self._vx
         vy = self._vy
+        # Keep the last facing when stopped, since atan2 of a zero vector is meaningless
         if vx * vx + vy * vy > 1e-18:
-            facing = round(atan2(vy, vx) / (pi / 4)) % 8
-            if facing != self.facing:
-                self.facing = facing
-                self.grid.bitmap = FACING_BITMAPS[facing]
+            self.facing = round(atan2(vy, vx) / (pi / 4)) % 8
 
-        # Offset by 1 so the center of the 3x3 bitmap sits on the creature's position
-        self.grid.x = floor(self._x) - 1
-        self.grid.y = floor(self._y) - 1
+        sprite = self.sprites[self.facing]
+        # Offset by 1 so the center of the 3x3 sprite sits on the creature's position
+        x = floor(self._x) - 1
+        y = floor(self._y) - 1
+        if x >= 0 and y >= 0:
+            bitmaptools.blit(bitmap, sprite, x, y, skip_source_index=0)
+            return
+
+        # CircuitPython's blit rejects negative positions, so crop off the sprite's
+        # columns/rows hanging past the left/top edge and blit the rest at 0
+        x1 = -x if x < 0 else 0
+        y1 = -y if y < 0 else 0
+        if x1 < sprite.width and y1 < sprite.height:
+            bitmaptools.blit(
+                bitmap, sprite, x + x1, y + y1, x1=x1, y1=y1, skip_source_index=0
+            )

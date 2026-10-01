@@ -4,10 +4,10 @@ from math import pi, ceil, floor
 from graphics.vector import Vector, constrain_angle
 from creatures.creature import Creature
 
-from _dio import dio
-
 
 class CreatureSpine(Creature):
+    COLOR = 0x2E9BFF
+
     def __init__(
         self,
         origin: Vector,
@@ -15,7 +15,10 @@ class CreatureSpine(Creature):
         link_size: int,
         angle_constraint: float = 2 * pi,
         render_padding: int = 0,
+        color_index: int = 1,
     ):
+        # Palette index to draw with
+        self.color_index = color_index
         self._velocity = Vector(0, 0)
         self.link_size = link_size
         self.angle_constraint = angle_constraint
@@ -28,29 +31,10 @@ class CreatureSpine(Creature):
             prev_joint = self.joints[i - 1]
             self.joints.append(prev_joint + link_size_vec)
 
-        # Graphics
-        # displayio can't swap in a bitmap of a different size, so allocate one fixed-size
-        # bitmap centered on the head. No joint can be further than the spine's length from
-        # the head, so it fits the whole creature however it bends. render_padding adds room
-        # for anything drawn around the joints (e.g. body width).
-        self.half_size = ceil((num_joints - 1) * link_size) + render_padding
-        self.render_radius = self.half_size
-        size = 2 * self.half_size + 1
-        self.palette = self.make_palette()
-        self.bitmap = dio.Bitmap(size, size, 256)
-        self.grid = dio.TileGrid(self.bitmap, pixel_shader=self.palette)
-        self.update_grid_position()
-
-    def make_palette(self):
-        palette = dio.Palette(2)
-        palette.make_transparent(0)
-        palette[1] = 0x2E9BFF
-        return palette
-
-    def update_grid_position(self):
-        """Center the bitmap on the head."""
-        self.grid.x = floor(self.joints[0].x) - self.half_size
-        self.grid.y = floor(self.joints[0].y) - self.half_size
+        # No joint can be further than the spine's length from the head, so that bounds
+        # the drawing however it bends. render_padding adds room for anything drawn
+        # around the joints (e.g. body width).
+        self.render_radius = ceil((num_joints - 1) * link_size) + render_padding
 
     def position(self):
         return self.joints[0]
@@ -83,14 +67,16 @@ class CreatureSpine(Creature):
                 constrained_angle, self.link_size
             )
 
-    def render(self):
+    def render(self, bitmap):
         """
         Render the chain as a series of pixels.
         """
-        self.update_grid_position()
-        self.bitmap.fill(0)
+        width = bitmap.width
+        height = bitmap.height
+        color_index = self.color_index
         for vec in self.joints:
-            x = floor(vec.x) - self.grid.x
-            y = floor(vec.y) - self.grid.y
-            if 0 <= x < self.bitmap.width and 0 <= y < self.bitmap.height:
-                self.bitmap[x, y] = 1
+            x = floor(vec.x)
+            y = floor(vec.y)
+            # Real displayio raises IndexError on out-of-range writes
+            if 0 <= x < width and 0 <= y < height:
+                bitmap[x, y] = color_index

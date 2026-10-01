@@ -10,6 +10,7 @@ DIRECTIONS = (-1, 0, 1)
 class FlockingBehavior(Behavior):
     def __init__(
         self,
+        bitmap,
         width: int,
         height: int,
         outside_window_size: int,
@@ -26,8 +27,11 @@ class FlockingBehavior(Behavior):
         cruise_force: float,
     ):
         """
-        Flocking behavior for a group of boids.
+        Flocking behavior for a group of boids. The boids render into bitmap, the
+        scene's full-screen canvas, which the scene redraws the background into
+        before each update.
         """
+        self.bitmap = bitmap
         self.width = width
         self.height = height
         self.outside_window_size = outside_window_size
@@ -98,10 +102,6 @@ class FlockingBehavior(Behavior):
         # frames, unlike Creature.velocity which is only the last frame's movement.
         self.vxs: list[float] = []
         self.vys: list[float] = []
-        # Whether each boid was drawn on screen last frame. Off-screen boids skip
-        # render(), but one that just left still needs a final render to move its
-        # sprite fully off screen.
-        self.visible: list[bool] = []
         # How far past the window edge a boid can be and still draw a pixel on
         # screen. +1 covers flooring the position to a pixel.
         self.render_margin = 1
@@ -117,8 +117,6 @@ class FlockingBehavior(Behavior):
         for boid in boids:
             self.xs.append(boid.x)
             self.ys.append(boid.y)
-            # Render every boid on the first frame to place its sprite
-            self.visible.append(True)
             self.render_margin = max(self.render_margin, boid.render_radius + 1)
             # Start each boid moving in a random direction
             angle = random.uniform(0, 2 * math.pi)
@@ -311,6 +309,7 @@ class FlockingBehavior(Behavior):
         4. Add noise and cruise
         5. Apply the summed forces as acceleration and clamp speed to [min_speed, max_speed]
         6. Move boid based on velocity and push the new state to the creature
+        7. Render the boids that are on screen
         """
         boids = self.boids
         count = len(boids)
@@ -402,12 +401,6 @@ class FlockingBehavior(Behavior):
         # 6. Move boids
         self.vxs = new_vxs
         self.vys = new_vys
-        visible = self.visible
-        margin = self.render_margin
-        view_left = -margin
-        view_right = self.width + margin
-        view_top = -margin
-        view_bottom = self.height + margin
         for i in range(count):
             vx = new_vxs[i]
             vy = new_vys[i]
@@ -415,13 +408,27 @@ class FlockingBehavior(Behavior):
             y = ys[i] + vy * dt
             xs[i] = x
             ys[i] = y
-            boid = boids[i]
-            boid.set_state(x, y, vx, vy)
+            boids[i].set_state(x, y, vx, vy)
+
+        # 7. Render
+        self.render()
+
+    def render(self):
+        """
+        Draw every boid that can reach the screen. Off-screen boids are skipped;
+        the scene's background redraw erases wherever they were last drawn.
+        """
+        bitmap = self.bitmap
+        boids = self.boids
+        xs = self.xs
+        ys = self.ys
+        margin = self.render_margin
+        view_left = -margin
+        view_right = self.width + margin
+        view_top = -margin
+        view_bottom = self.height + margin
+        for i in range(len(boids)):
+            x = xs[i]
+            y = ys[i]
             if view_left < x < view_right and view_top < y < view_bottom:
-                boid.render()
-                visible[i] = True
-            elif visible[i]:
-                # Just left the screen: render once more so the sprite moves off
-                # screen instead of staying stuck at the edge
-                boid.render()
-                visible[i] = False
+                boids[i].render(bitmap)

@@ -91,3 +91,13 @@ def dim_palette(palette, brightness):
         g = int(((color >> 8) & 0xFF) * brightness)
         b = int((color & 0xFF) * brightness)
         palette[i] = (r << 16) | (g << 8) | b
+
+
+def make_canvas(group, width, height, palette):
+    """
+    Append a full-screen layer to group and return its bitmap, for the scene's
+    background and creatures to render into.
+    """
+    bitmap = dio.Bitmap(width, height, len(palette))
+    group.append(dio.TileGrid(bitmap, pixel_shader=palette))
+    return bitmap

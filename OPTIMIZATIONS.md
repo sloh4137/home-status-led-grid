@@ -26,6 +26,8 @@ Work through these in order, measuring after each step.
 | Pre-computed bitmaps and only render visible boids       | 100   | 8.7  | 89.3         | 9.6         | 15.9         |
 | Make FishBoid its own Creature instead of having a spine | 50    | 9.7  | 80.8         | 6.6         | 14.7         |
 | Inline cell_index                                        | 50    | 16.2 | 44.0         | 7.4         | 10.0         |
+| Render flock bitmaps all at once                         | 50    | 16.2 | 34.0         | 9.0         | 18.3         |
+| Render all bitmaps at once                               | 50    | 16.2 | 32.0         | 13.8        | 13.3         |
 
 At baseline, physics was ~81% of the frame time, render ~17%, and
 `display.refresh()` ~2%. As of the latest row, render is the biggest cost at ~54%,
@@ -123,7 +125,7 @@ allocations per frame, plus garbage-collector pauses.
 
 ### More work
 
-- [ ] See the single full-screen bitmap under Refresh; it also replaces the
+- [x] See the single full-screen bitmap under Refresh; it also replaces the
       per-boid sprite updates.
 
 ## 4. Refresh
@@ -134,6 +136,18 @@ allocations per frame, plus garbage-collector pauses.
 
 ### More work
 
-- [ ] Replace the per-boid TileGrids with one full-screen 64x64 bitmap: each frame,
+- [x] Replace the per-boid TileGrids with one full-screen 64x64 bitmap: each frame,
       erase the previous pixels and draw the new ones (consider `bitmaptools`), so
-      displayio only composites one layer.
+      displayio only composites one layer. First try: each behavior owned a
+      transparent canvas and cleared it with `fill(0)`, calling `render(bitmap)` on
+      its visible creatures (`FishBoid` uses `bitmaptools.blit`, `Fish` uses
+      `bitmaptools.fill_region`). Physics + render dropped from 51.4 to 43.0 ms,
+      but refresh rose from 10.0 to 18.3 ms: `fill(0)` marks the whole canvas dirty
+      every frame, so displayio recomposited the full screen through every layer.
+      Render timing now wraps `FlockingBehavior.render`, so it includes the clear
+      and the koi, which were previously counted as physics.
+- [ ] Draw everything into a single opaque canvas: the scene blits the current pond
+      frame over it each frame (replacing `fill(0)` and the pond's own TileGrid),
+      then the creatures draw on top using free indices in the pond's palette.
+      Refresh composites one layer with no transparency. Render timing also counts
+      the pond blit (`scenes.pond.draw_frame`). Not yet measured on hardware.

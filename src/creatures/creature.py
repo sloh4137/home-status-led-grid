@@ -44,8 +44,10 @@ class Creature:
         position = self.position()
         self.move(Vector(x - position.x, y - position.y))
 
-    def render(self):
+    def render(self, bitmap):
         """
-        Render the creature to the actual display.
+        Draw the creature into bitmap in screen coordinates. Every creature in the
+        scene shares one full-screen bitmap, which the scene redraws the background
+        into each frame, so only draw the creature's pixels and never clear it.
         """
         raise NotImplementedError
