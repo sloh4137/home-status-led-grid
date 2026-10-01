@@ -76,6 +76,9 @@ class FlockingBehavior(Behavior):
         self.max_cy = int(self.bottom // perception_radius) + 1
         self.cols = self.max_cx - self.min_cx + 3
         rows = self.max_cy - self.min_cy + 3
+        # Index of cell (0, 0), so a cell's index is cell_origin + cx + cy * cols.
+        # +1 skips the padding cell.
+        self.cell_origin = (1 - self.min_cx) + (1 - self.min_cy) * self.cols
         # Cells hold boid indices into the flat lists below.
         self.cells: list[list[int]] = [[] for _ in range(self.cols * rows)]
         # Cells that have boids in them, so only those need clearing each frame.
@@ -123,6 +126,10 @@ class FlockingBehavior(Behavior):
             self.vys.append(math.sin(angle) * self.cruise_speed)
 
     def cell_index(self, x: float, y: float) -> int:
+        """
+        Get the int index for the cell. Unused as a method and in-lining this computation instead
+        since function calls are expensive in CircuitPython.
+        """
         cx = int(x // self.perception_radius)
         cy = int(y // self.perception_radius)
         cx = min(max(cx, self.min_cx), self.max_cx)
@@ -168,7 +175,19 @@ class FlockingBehavior(Behavior):
         ys = self.ys
         bx = xs[i]
         by = ys[i]
-        index = self.cell_index(bx, by)
+        # Inlined cell_index(bx, by). Only boids that overshoot the swim area need
+        # clamping, so the min/max calls are skipped for the rest.
+        radius = self.perception_radius
+        cx = int(bx // radius)
+        cy = int(by // radius)
+        min_cx = self.min_cx
+        max_cx = self.max_cx
+        min_cy = self.min_cy
+        max_cy = self.max_cy
+        if not (min_cx <= cx <= max_cx and min_cy <= cy <= max_cy):
+            cx = min(max(cx, min_cx), max_cx)
+            cy = min(max(cy, min_cy), max_cy)
+        index = self.cell_origin + cx + cy * self.cols
         neighbors = []
 
         vx = self.vxs[i]
@@ -305,8 +324,22 @@ class FlockingBehavior(Behavior):
         for cell in self.occupied_cells:
             cell.clear()
         self.occupied_cells.clear()
+        radius = self.perception_radius
+        min_cx = self.min_cx
+        max_cx = self.max_cx
+        min_cy = self.min_cy
+        max_cy = self.max_cy
+        cols = self.cols
+        cell_origin = self.cell_origin
         for i in range(count):
-            cell = cells[self.cell_index(xs[i], ys[i])]
+            # Inlined cell_index(xs[i], ys[i]). Only boids that overshoot the swim
+            # area need clamping, so the min/max calls are skipped for the rest.
+            cx = int(xs[i] // radius)
+            cy = int(ys[i] // radius)
+            if not (min_cx <= cx <= max_cx and min_cy <= cy <= max_cy):
+                cx = min(max(cx, min_cx), max_cx)
+                cy = min(max(cy, min_cy), max_cy)
+            cell = cells[cell_origin + cx + cy * cols]
             if not cell:
                 self.occupied_cells.append(cell)
             cell.append(i)
