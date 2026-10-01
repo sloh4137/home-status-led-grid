@@ -13,7 +13,7 @@ On real hardware the equivalent setup is:
 Requires tkinter (ships with CPython; on some Linux distros: apt install python3-tk).
 """
 
-from typing import Tuple
+from typing import Tuple, Union
 
 # ----------------------------------------------------------------------------
 # displayio-compatible primitives
@@ -30,12 +30,20 @@ class Bitmap:
         self.height = height
         self._pixels = bytearray(width * height)
 
-    def __setitem__(self, pos: Tuple[int, int], value):
+    # Like displayio, accepts either an (x, y) tuple or a flat row-major index
+    # (adafruit_imageload writes pixels with the latter).
+    def __setitem__(self, pos: Union[int, Tuple[int, int]], value):
+        if isinstance(pos, int):
+            if 0 <= pos < len(self._pixels):
+                self._pixels[pos] = value & 0xFF
+            return
         x, y = pos
         if 0 <= x < self.width and 0 <= y < self.height:
             self._pixels[y * self.width + x] = value & 0xFF
 
-    def __getitem__(self, pos: Tuple[int, int]):
+    def __getitem__(self, pos: Union[int, Tuple[int, int]]):
+        if isinstance(pos, int):
+            return self._pixels[pos] if 0 <= pos < len(self._pixels) else 0
         x, y = pos
         if 0 <= x < self.width and 0 <= y < self.height:
             return self._pixels[y * self.width + x]
@@ -52,11 +60,17 @@ class Palette:
         self.colors = [0x000000] * num_colors
         self._transparent = set()
 
-    def __setitem__(self, index: int, color: int):
+    # Like displayio, accepts a 0xRRGGBB int or RGB bytes (as adafruit_imageload passes).
+    def __setitem__(self, index: int, color: Union[int, bytes, bytearray]):
+        if not isinstance(color, int):
+            color = (color[0] << 16) | (color[1] << 8) | color[2]
         self.colors[index] = color
 
     def __getitem__(self, index: int) -> int:
         return self.colors[index]
+
+    def __len__(self) -> int:
+        return len(self.colors)
 
     def make_transparent(self, index: int):
         self._transparent.add(index)
@@ -68,11 +82,39 @@ class Palette:
 class TileGrid:
     """displayio.TileGrid: places a Bitmap on screen at (x, y)."""
 
-    def __init__(self, bitmap: Bitmap, pixel_shader: Palette, x: int = 0, y: int = 0):
+    def __init__(
+        self,
+        bitmap: Bitmap,
+        pixel_shader: Palette,
+        x: int = 0,
+        y: int = 0,
+        width: int = 1,
+        height: int = 1,
+        tile_width: int = None,
+        tile_height: int = None,
+        default_tile: int = 0,
+    ):
         self._bitmap = bitmap
         self.pixel_shader = pixel_shader
         self.x = x
         self.y = y
+        # Like displayio: a width x height grid of tiles, each tile_width x
+        # tile_height, cut row-major from the bitmap (e.g. a sprite sheet).
+        self.width = width
+        self.height = height
+        self.tile_width = tile_width or bitmap.width
+        self.tile_height = tile_height or bitmap.height
+        self._tiles = [default_tile] * (width * height)
+
+    def __setitem__(self, pos: Union[int, Tuple[int, int]], tile: int):
+        if not isinstance(pos, int):
+            pos = pos[1] * self.width + pos[0]
+        self._tiles[pos] = tile
+
+    def __getitem__(self, pos: Union[int, Tuple[int, int]]) -> int:
+        if not isinstance(pos, int):
+            pos = pos[1] * self.width + pos[0]
+        return self._tiles[pos]
 
     @property
     def bitmap(self) -> Bitmap:
@@ -121,24 +163,32 @@ def composite(group, width, height):
     for layer in group:
         bmp = layer.bitmap
         pal = layer.pixel_shader
-        ox, oy = int(layer.x), int(layer.y)
-        for by in range(bmp.height):
-            sy = oy + by
-            if not 0 <= sy < height:
-                continue
-            for bx in range(bmp.width):
-                sx = ox + bx
-                if not 0 <= sx < width:
-                    continue
-                idx = bmp[bx, by]
-                if pal.is_transparent(idx):
-                    continue
-                color = pal[idx]
-                frame[sy * width + sx] = (
-                    (color >> 16) & 0xFF,
-                    (color >> 8) & 0xFF,
-                    color & 0xFF,
-                )
+        tw, th = layer.tile_width, layer.tile_height
+        tiles_per_row = bmp.width // tw
+        for gy in range(layer.height):
+            for gx in range(layer.width):
+                tile = layer[gx, gy]
+                src_x = (tile % tiles_per_row) * tw
+                src_y = (tile // tiles_per_row) * th
+                ox = int(layer.x) + gx * tw
+                oy = int(layer.y) + gy * th
+                for by in range(th):
+                    sy = oy + by
+                    if not 0 <= sy < height:
+                        continue
+                    for bx in range(tw):
+                        sx = ox + bx
+                        if not 0 <= sx < width:
+                            continue
+                        idx = bmp[src_x + bx, src_y + by]
+                        if pal.is_transparent(idx):
+                            continue
+                        color = pal[idx]
+                        frame[sy * width + sx] = (
+                            (color >> 16) & 0xFF,
+                            (color >> 8) & 0xFF,
+                            color & 0xFF,
+                        )
     return frame
 
 

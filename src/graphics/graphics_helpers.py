@@ -76,3 +76,18 @@ def flip_horizontal(bitmap):
         for x in range(bitmap.width):
             out[bitmap.width - 1 - x, y] = bitmap[x, y]
     return out
+
+
+def dim_palette(palette, brightness):
+    """Scale every color in palette by brightness (0.0-1.0), in place.
+
+    The MatrixPortal's display brightness is only on/off, so dimming is done
+    in the colors themselves. Call once per palette -- calling again dims it
+    further.
+    """
+    for i in range(len(palette)):
+        color = palette[i]
+        r = int(((color >> 16) & 0xFF) * brightness)
+        g = int(((color >> 8) & 0xFF) * brightness)
+        b = int((color & 0xFF) * brightness)
+        palette[i] = (r << 16) | (g << 8) | b

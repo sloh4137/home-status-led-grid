@@ -5,12 +5,16 @@
 #
 #   CIRCUITPY/
 #     code.py
+#     lib/
+#       adafruit_imageload/   (from the CircuitPython library bundle)
 #     src/
 #       _dio.py
+#       _imageload.py
 #       behaviors/
 #       creatures/
 #       graphics/
 #       scenes/
+#       sprites/
 #
 # The scene modules import each other by top-level name (e.g.
 # `from _dio import dio`), so code.py adds /src to sys.path before importing.
