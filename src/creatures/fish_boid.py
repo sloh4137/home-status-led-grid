@@ -1,7 +1,7 @@
 from math import atan2, floor, pi
 
 from graphics.vector import Vector
-from creatures.spine import CreatureSpine
+from creatures.creature import Creature
 
 from _dio import dio
 
@@ -44,7 +44,7 @@ def _sprite_bitmap(rows):
 FACING_BITMAPS = [_sprite_bitmap(rows) for rows in FACING_SPRITE_SINGLE]
 
 
-class FishBoid(CreatureSpine):
+class FishBoid(Creature):
     def __init__(self, origin: Vector):
         # A single joint has no spine to solve, so position and velocity are kept as
         # plain floats instead of Vectors to avoid allocating on every update.
@@ -52,10 +52,10 @@ class FishBoid(CreatureSpine):
         self._y = origin.y
         self._vx = 0.0
         self._vy = 0.0
-        # Padding of 1 gives a 3x3 bitmap centered on the single joint
-        super().__init__(origin, 1, 1, render_padding=1)
+
+        self.palette = self.make_palette()
+        self.grid = dio.TileGrid(FACING_BITMAPS[0], pixel_shader=self.palette)
         self.facing = 0
-        self.grid.bitmap = FACING_BITMAPS[0]
         self.render()
 
     def position(self) -> Vector:
