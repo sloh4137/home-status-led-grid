@@ -21,6 +21,7 @@ class FlockingBehavior(Behavior):
         alignment_force: float,
         cohesion_force: float,
         avoidance_force: float,
+        random_steer: int,
         min_speed: float,
         max_speed: float,
         cruise_speed: float,
@@ -62,6 +63,7 @@ class FlockingBehavior(Behavior):
         self.alignment_force = alignment_force
         self.cohesion_force = cohesion_force
         self.avoidance_force = avoidance_force
+        self.random_steer = random_steer
         self.min_speed = min_speed
         self.max_speed = max_speed
         # Speed boids drift back to after being slowed down or sped up by other
@@ -362,6 +364,7 @@ class FlockingBehavior(Behavior):
         safe_right = self.safe_right
         safe_top = self.safe_top
         safe_bottom = self.safe_bottom
+        random_steer = self.random_steer
         uniform = random.uniform
         for i in range(parity, count, 2):
             vx = vxs[i]
@@ -379,8 +382,8 @@ class FlockingBehavior(Behavior):
 
             # 4: Add random noise and pull back towards cruise speed along the
             # current heading
-            fx += uniform(-1, 1)
-            fy += uniform(-1, 1)
+            fx += uniform(-random_steer, random_steer)
+            fy += uniform(-random_steer, random_steer)
             speed = math.sqrt(vx * vx + vy * vy)
             if speed != 0:
                 scale = (cruise_speed - speed) * cruise_force / speed
