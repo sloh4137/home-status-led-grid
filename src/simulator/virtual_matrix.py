@@ -104,6 +104,7 @@ class TileGrid:
         self.height = height
         self.tile_width = tile_width or bitmap.width
         self.tile_height = tile_height or bitmap.height
+        self.hidden = False
         self._tiles = [default_tile] * (width * height)
 
     def __setitem__(self, pos: Union[int, Tuple[int, int]], tile: int):
@@ -160,7 +161,11 @@ def composite(group, width, height):
     frame = [(0, 0, 0)] * (width * height)
     if group is None:
         return frame
+    if getattr(group, "hidden", False):
+        return frame
     for layer in group:
+        if getattr(layer, "hidden", False):
+            continue
         bmp = layer.bitmap
         pal = layer.pixel_shader
         tw, th = layer.tile_width, layer.tile_height
@@ -270,7 +275,7 @@ class VirtualDisplay:
     like the real matrix -- not one continuous image.
 
     display.show(group)  -- like FramebufferDisplay.show()
-    display.run(update)   -- calls update(dt) then redraws, at ~fps
+    display.run(update)   -- calls update(dt, now) then redraws, at ~fps
     """
 
     def __init__(self, width=64, height=64, scale=8, title="Virtual LED Matrix"):
@@ -336,7 +341,7 @@ class VirtualDisplay:
             now = time.monotonic()
             dt = now - last
             last = now
-            update(dt)
+            update(dt, now)
             self.refresh()
             self._root.after(int(1000 / fps), tick)
 

@@ -38,7 +38,7 @@ import rgbmatrix
 
 sys.path.insert(0, "/src")
 
-from scenes.pond import create_scene  # noqa: E402 -- needs /src on sys.path
+from app import App  # noqa: E402 -- needs /src on sys.path
 from behaviors.flocking import FlockingBehavior  # noqa: E402
 import scenes.pond  # noqa: E402
 
@@ -70,9 +70,9 @@ matrix = rgbmatrix.RGBMatrix(
 )
 display = framebufferio.FramebufferDisplay(matrix, auto_refresh=False)
 
-# ---------------------------------------------------------------- pond scene
-group, update = create_scene(WIDTH, HEIGHT)
-display.root_group = group
+# ---------------------------------------------------------------- app
+app = App(WIDTH, HEIGHT, scenes.pond)
+display.root_group = app.group
 
 # ---------------------------------------------------------------- timing
 # With DEBUG on, physics, render() and display.refresh() are timed separately
@@ -107,13 +107,13 @@ if DEBUG:
     scenes.pond.draw_frame = _timed_draw_frame
 
 
-def timed_frame(dt):
+def timed_frame(dt, now):
     global render_ns, frames, update_total, render_total, refresh_total
     global stats_start
 
     render_ns = 0
     t0 = time.monotonic_ns()
-    update(dt)
+    app.tick(dt, now)
     t1 = time.monotonic_ns()
     display.refresh()
     t2 = time.monotonic_ns()
@@ -147,9 +147,9 @@ while True:
     last = now
 
     if DEBUG:
-        timed_frame(dt)
+        timed_frame(dt, now)
     else:
-        update(dt)
+        app.tick(dt, now)
         display.refresh()
 
     time.sleep(max(0.0, frame_time - (time.monotonic() - now)))
