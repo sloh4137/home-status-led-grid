@@ -6,6 +6,8 @@
 
 HA config comes from hardware/settings.toml -- the same file deploy.sh copies
 to the board as CIRCUITPY/settings.toml; --settings points at a different file.
+With HA_URL set it reads live values through home.ha_client.HAClient, otherwise
+it shows FakeSensors values.
 
 Renders into a tkinter window (simulator/virtual_matrix.VirtualDisplay) and
 drives the same ``App`` as the MatrixPortal's code.py, so scenes, overlays and
@@ -20,12 +22,14 @@ forgiving than hardware (e.g. out-of-range bitmap writes).
 import argparse
 import importlib
 import os
+import socket
 import time
 
 import simulator.virtual_matrix as vm
 from app import App
 from config import load_settings, poll_seconds
 from home.fake_sensors import FakeSensors
+from home.ha_client import from_settings
 
 # The same file deploy.sh copies to the board as CIRCUITPY/settings.toml
 DEFAULT_SETTINGS = os.path.join(
@@ -57,8 +61,14 @@ def main(argv=None):
     settings = load_settings(args.settings)
 
     scene = importlib.import_module("scenes." + args.scene)
-    sensors = FakeSensors(poll_seconds(settings))
-    app = App(args.width, args.height, scene, sensors, time.monotonic())
+    now = time.monotonic()
+    # The CPython socket module has the same API as CircuitPython's
+    # SocketPool, so the hardware client runs unchanged here.
+    sensors = from_settings(socket, settings, poll_seconds(settings), now)
+    if sensors is None:
+        print("No HA_URL in %s; showing fake sensor values" % args.settings)
+        sensors = FakeSensors(poll_seconds(settings))
+    app = App(args.width, args.height, scene, sensors, now)
 
     display = vm.VirtualDisplay(
         args.width,

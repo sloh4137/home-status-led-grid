@@ -99,7 +99,8 @@ Extend `_FONT_3X5` with A–Z and `. - : > / °`, so text fits 16 characters × 
 
 **M4 — Non-blocking HA client (desktop first).**
 - Add `HAClient` over the CPython `socket` module, selected when `HA_URL` is set.
-- *Check:* the simulator shows real values that match the HA UI. With a wrong port or IP the animation stays smooth and the panel shows `HA OFFLINE`, then recovers when the config is fixed. WSL2 may need mirrored networking to reach the LAN.
+- *Check:* the simulator shows real values that match the HA UI. With a wrong port or IP the animation stays smooth and the panel shows `HA OFFLINE`, then recovers when the config is fixed. WSL2 reaches the LAN IP without mirrored networking, but `homeassistant.local` does not resolve there, so use the IP in `HA_URL`.
+- *Done:* worst `poll()` measured at ≤0.3 ms on desktop across OK, 404, 401, slow server (timeout), refused port and blackholed IP. Requests use HTTP/1.0 so replies are never chunked; 401/403 aborts the cycle like an outage, 404 shows `--` for that entity only.
 
 **M5 — HA client on hardware.**
 - `code.py` connects to WiFi at boot if needed, builds the `SocketPool` and `HAClient`, and shows `NO WIFI` / `NO HA CFG` on failure.

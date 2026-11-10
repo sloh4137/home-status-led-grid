@@ -11,6 +11,8 @@ CIRCUITPY_WIFI_SSID = "your-wifi-ssid"
 CIRCUITPY_WIFI_PASSWORD = "your-wifi-password"
 
 # Home Assistant on your LAN (no cloud needed). A hostname is resolved once at startup.
+# An IP is the safest choice: mDNS names like homeassistant.local often don't resolve
+# on WSL2 or CircuitPython. Plain http only.
 HA_URL = "http://192.1.1.1:8123"
 # Long-lived access token: HA -> your profile -> Security -> Long-lived access tokens
 HA_TOKEN = "paste-token-here"
