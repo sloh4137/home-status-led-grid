@@ -52,10 +52,6 @@ import scenes.pond  # noqa: E402
 WIDTH, HEIGHT = 64, 64
 FPS = 30
 DEBUG = True  # time physics, render, net and refresh; print them to the serial console
-# 0 = non-blocking connect() (normal). If HA never connects and the console
-# shows connect errors, set this to 0.05: connect() then blocks for up to 50 ms,
-# once per request.
-CONNECT_TIMEOUT_S = 0
 STATS_EVERY = 30  # frames between timing printouts on the serial console
 
 # ---------------------------------------------------------------- matrix setup
@@ -65,12 +61,19 @@ matrix = rgbmatrix.RGBMatrix(
     height=HEIGHT,
     bit_depth=4,
     rgb_pins=[
-        board.MTX_R1, board.MTX_G1, board.MTX_B1,
-        board.MTX_R2, board.MTX_G2, board.MTX_B2,
+        board.MTX_R1,
+        board.MTX_G1,
+        board.MTX_B1,
+        board.MTX_R2,
+        board.MTX_G2,
+        board.MTX_B2,
     ],
     addr_pins=[
-        board.MTX_ADDRA, board.MTX_ADDRB, board.MTX_ADDRC,
-        board.MTX_ADDRD, board.MTX_ADDRE,
+        board.MTX_ADDRA,
+        board.MTX_ADDRB,
+        board.MTX_ADDRC,
+        board.MTX_ADDRD,
+        board.MTX_ADDRE,
     ],
     clock_pin=board.MTX_CLK,
     latch_pin=board.MTX_LAT,
@@ -114,8 +117,10 @@ def connect_sensors(settings):
     pool = socketpool.SocketPool(wifi.radio)
     try:
         return from_settings(
-            pool, settings, poll_seconds(settings), time.monotonic(),
-            CONNECT_TIMEOUT_S,
+            pool,
+            settings,
+            poll_seconds(settings),
+            time.monotonic(),
         )
     except ValueError as e:
         print("HA:", e)
@@ -193,7 +198,7 @@ def timed_frame(dt, now):
         elapsed = time.monotonic_ns() - stats_start
         print(
             "fps %.1f | physics %.1f ms | render %.1f ms | net %.1f (max %.1f) ms"
-            " | refresh %.1f ms"
+            " | refresh %.1f ms | ha ok %s"
             % (
                 frames * 1e9 / elapsed,
                 (update_total - render_total - net_total) / frames / 1e6,
@@ -201,6 +206,8 @@ def timed_frame(dt, now):
                 net_total / frames / 1e6,
                 net_max / 1e6,
                 refresh_total / frames / 1e6,
+                "never" if sensors.last_ok is None
+                else "%.0fs ago" % (time.monotonic() - sensors.last_ok),
             )
         )
         frames = 0

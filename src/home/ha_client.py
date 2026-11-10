@@ -33,6 +33,7 @@ RECV_CHUNK = 1024
 BUFFER_SIZE = 4096
 
 IDLE, CONNECTING, SENDING, RECEIVING, PARSE = range(5)
+_STATE_NAMES = ("idle", "connecting", "sending", "receiving", "parsing")
 
 
 def _errnos(names, fallback):
@@ -51,10 +52,20 @@ _WOULD_BLOCK = _errnos(
 )
 # connect() on an already-connected socket: the non-blocking connect finished
 _IS_CONN = _errnos(("EISCONN",), (106, 127))
-# CircuitPython's connect() with timeout 0 waits 0 s for the handshake and
-# raises ETIMEDOUT while it is still in progress (Linux 110, ESP-IDF 116).
-# Only the connect step treats this as "not yet"; REQUEST_TIMEOUT_S bounds it.
+# CircuitPython (10.x, espressif) connect() with timeout 0 raises ETIMEDOUT
+# without stopping the attempt (Linux 110, ESP-IDF 116); later calls raise
+# EALREADY, then EISCONN once connected. Only the connect step treats this as
+# "not yet"; REQUEST_TIMEOUT_S bounds it.
 _CONNECT_PENDING = _WOULD_BLOCK | _errnos(("ETIMEDOUT",), (110, 116))
+# CircuitPython's send() raises BrokenPipeError (EPIPE) unless its internal
+# "connected" flag is set, and only a connect() call that returns sets it; a
+# non-blocking connect finishes with EISCONN instead. sendto() skips that check
+# and lwIP sends it on the TCP connection like send(), so the client switches
+# to sendto() after the first such EPIPE.
+_EPIPE = getattr(errno, "EPIPE", 32)
+# CircuitPython's non-blocking recv_into() raises ENOTCONN where CPython
+# returns 0 when the server has closed: treat both as end of response.
+_CLOSED = _errnos(("ENOTCONN",), (107, 128))
 
 
 def _errno_of(exc):
@@ -83,7 +94,7 @@ READOUT_ENTITIES = (
 )
 
 
-def from_settings(pool, settings, interval_s, now, connect_timeout=0):
+def from_settings(pool, settings, interval_s, now):
     """Build an HAClient from settings.toml values, or None when HA_URL is unset.
     Raises ValueError for an HA_URL it can't use."""
     url = settings.get("HA_URL")
@@ -103,20 +114,12 @@ def from_settings(pool, settings, interval_s, now, connect_timeout=0):
         entities,
         interval_s,
         now,
-        connect_timeout,
     )
 
 
 class HAClient:
-    def __init__(
-        self, pool, host, port, token, entities, interval_s, now=0.0, connect_timeout=0
-    ):
-        """connect_timeout > 0 makes the first connect() block for up to that
-        many seconds instead of being non-blocking: a fallback for a socket
-        stack whose non-blocking connect never completes. A bounded stall, once
-        per request."""
+    def __init__(self, pool, host, port, token, entities, interval_s, now=0.0):
         self.interval_s = interval_s
-        self._connect_timeout = connect_timeout
         self.values = {}
         self.last_ok = None
         self.changed = False
@@ -149,6 +152,7 @@ class HAClient:
         self._deadline = 0.0
         self._next_t = now  # first cycle starts right away
         self._addr = None
+        self._use_sendto = False  # set on CircuitPython, see _EPIPE
         self._failing = False
         self._resolve(now)
 
@@ -180,9 +184,11 @@ class HAClient:
             self._sock = None
 
     def _fail(self, now, message):
-        """Abort the cycle; the next one starts after the backoff."""
+        """Abort the cycle; the next one starts after the backoff. Always
+        logged (at most once per backoff), unlike repeated HTTP errors."""
         self._close()
-        self._error(message)
+        print("HA:", message)
+        self.last_error = message
         self._failing = True
         self._state = IDLE
         self._entity = 0
@@ -214,7 +220,15 @@ class HAClient:
             self._start(now)
             return
         if now > self._deadline:
-            self._fail(now, "timeout (%s)" % self._entities[self._entity][1])
+            self._fail(
+                now,
+                "%s: timeout while %s (%d bytes in)"
+                % (
+                    self._entities[self._entity][1],
+                    _STATE_NAMES[self._state],
+                    self._received,
+                ),
+            )
             return
         try:
             if state == CONNECTING:
@@ -228,7 +242,11 @@ class HAClient:
         except OSError as e:
             if _errno_of(e) in _WOULD_BLOCK:
                 return  # try again next frame
-            self._fail(now, "%s: %s" % (self._entities[self._entity][1], e))
+            self._fail(
+                now,
+                "%s: %s while %s"
+                % (self._entities[self._entity][1], e, _STATE_NAMES[state]),
+            )
 
     def _start(self, now):
         try:
@@ -236,7 +254,7 @@ class HAClient:
         except OSError as e:
             self._fail(now, "socket: %s" % e)
             return
-        sock.settimeout(self._connect_timeout)
+        sock.settimeout(0)
         self._sock = sock
         self._sent = 0
         self._received = 0
@@ -248,22 +266,29 @@ class HAClient:
         # Non-blocking connect: the first call raises EINPROGRESS, later calls
         # raise EALREADY until it completes, then EISCONN (or the real error,
         # e.g. ECONNREFUSED). A call that returns normally also means connected.
-        sock = self._sock
         try:
-            sock.connect(self._addr)
+            self._sock.connect(self._addr)
         except OSError as e:
             code = _errno_of(e)
-            if code in _CONNECT_PENDING and not self._connect_timeout:
+            if code in _CONNECT_PENDING:
                 return  # still connecting, try again next frame
             if code not in _IS_CONN:
                 raise
-        if self._connect_timeout:
-            sock.settimeout(0)
         self._state = SENDING
 
     def _step_send(self):
         request = self._requests[self._entity]
-        n = self._sock.send(request[self._sent:])
+        chunk = request[self._sent:]
+        if self._use_sendto:
+            n = self._sock.sendto(chunk, self._addr)
+        else:
+            try:
+                n = self._sock.send(chunk)
+            except OSError as e:
+                if _errno_of(e) != _EPIPE or self._sent:
+                    raise
+                self._use_sendto = True
+                n = self._sock.sendto(chunk, self._addr)
         self._sent += n
         if self._sent >= len(request):
             self._state = RECEIVING
@@ -273,7 +298,12 @@ class HAClient:
         if start >= BUFFER_SIZE:
             raise OSError("response over %d bytes" % BUFFER_SIZE)
         end = min(start + RECV_CHUNK, BUFFER_SIZE)
-        n = self._sock.recv_into(self._view[start:end], end - start)
+        try:
+            n = self._sock.recv_into(self._view[start:end], end - start)
+        except OSError as e:
+            if _errno_of(e) not in _CLOSED:
+                raise
+            n = 0
         if n == 0:  # server closed: the whole response is in the buffer
             self._state = PARSE
         else:
