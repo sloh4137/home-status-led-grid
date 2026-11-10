@@ -20,7 +20,7 @@ All HA config comes from `settings.toml`, on both hardware and desktop. Nothing 
 - Hardware: values are read with `os.getenv()` from `CIRCUITPY/settings.toml`.
 - Desktop:
   - `src/config.py` (new) has `load_settings(path)`. On CircuitPython it wraps `os.getenv`. On CPython it parses the same file with `tomllib`.
-  - `run.py` reads `settings.toml` at the repo root by default, using the same format as the board's file, and `--settings PATH` overrides the path.
+  - `run.py` reads `src/hardware/settings.toml` by default (the same file `deploy.sh` copies to the board), and `--settings PATH` overrides the path.
   - If the file or `HA_URL` is missing, the desktop uses `FakeSensors`.
 - Update `src/hardware/settings.toml.example`:
   - Add the new keys and replace the old `HUMIDITY_ENTITY`.
@@ -94,7 +94,7 @@ Extend `_FONT_3X5` with A–Z and `. - : > / °`, so text fits 16 characters × 
 
 **M3 — Settings loader.**
 - Add `src/config.py`, the new keys in `settings.toml.example`, and the `.gitignore` entry.
-- `run.py` reads the repo-root `settings.toml` (or `--settings`), and `code.py` uses `os.getenv`.
+- `run.py` reads `src/hardware/settings.toml` (or `--settings`), `deploy.sh` copies it to the board, and `code.py` uses `os.getenv`.
 - *Check:* changing `HA_POLL_SECONDS` in the file changes the fake update rate on both targets.
 
 **M4 — Non-blocking HA client (desktop first).**
@@ -131,6 +131,7 @@ Extend `_FONT_3X5` with A–Z and `. - : > / °`, so text fits 16 characters × 
   - `src/hardware/code.py`
   - `src/run.py`
   - `src/simulator/virtual_matrix.py`
+  - `deploy.sh`
   - `src/hardware/settings.toml.example`
   - `.gitignore`
-- `deploy.sh` doesn't change, because new `src/` modules are already copied. `settings.toml` is copied by hand.
+- `deploy.sh` copies `src/hardware/settings.toml` to `CIRCUITPY/settings.toml` if it exists (`--no-settings` skips it). New `src/` modules are already copied.

@@ -5,11 +5,13 @@
 #
 #   CIRCUITPY/
 #     code.py
+#     settings.toml           (from src/hardware/settings.toml.example)
 #     lib/
 #       adafruit_imageload/   (from the CircuitPython library bundle)
 #     src/
 #       _dio.py
 #       _imageload.py
+#       config.py
 #       behaviors/
 #       creatures/
 #       graphics/
@@ -42,6 +44,7 @@ sys.path.insert(0, "/src")
 
 from app import App  # noqa: E402 -- needs /src on sys.path
 from behaviors.flocking import FlockingBehavior  # noqa: E402
+from config import load_settings, poll_seconds  # noqa: E402
 from home.fake_sensors import FakeSensors  # noqa: E402
 import scenes.pond  # noqa: E402
 
@@ -49,7 +52,6 @@ WIDTH, HEIGHT = 64, 64
 FPS = 30
 DEBUG = True  # time physics, render and refresh and print them to the serial console
 STATS_EVERY = 30  # frames between timing printouts on the serial console
-POLL_SECONDS = 5  # moves to settings.toml (HA_POLL_SECONDS) in M3
 
 # ---------------------------------------------------------------- matrix setup
 displayio.release_displays()
@@ -75,7 +77,10 @@ matrix = rgbmatrix.RGBMatrix(
 display = framebufferio.FramebufferDisplay(matrix, auto_refresh=False)
 
 # ---------------------------------------------------------------- app
-app = App(WIDTH, HEIGHT, scenes.pond, FakeSensors(POLL_SECONDS), time.monotonic())
+# HA config comes from CIRCUITPY/settings.toml (read with os.getenv)
+settings = load_settings()
+sensors = FakeSensors(poll_seconds(settings))
+app = App(WIDTH, HEIGHT, scenes.pond, sensors, time.monotonic())
 display.root_group = app.group
 
 # ---------------------------------------------------------------- timing

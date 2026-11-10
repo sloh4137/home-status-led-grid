@@ -2,6 +2,10 @@
 
     python3 run.py --scene pond
     python3 run.py --scene example_fish_scene --scale 10
+    python3 run.py --settings ../my-settings.toml
+
+HA config comes from hardware/settings.toml -- the same file deploy.sh copies
+to the board as CIRCUITPY/settings.toml; --settings points at a different file.
 
 Renders into a tkinter window (simulator/virtual_matrix.VirtualDisplay) and
 drives the same ``App`` as the MatrixPortal's code.py, so scenes, overlays and
@@ -15,13 +19,18 @@ forgiving than hardware (e.g. out-of-range bitmap writes).
 
 import argparse
 import importlib
+import os
 import time
 
 import simulator.virtual_matrix as vm
 from app import App
+from config import load_settings, poll_seconds
 from home.fake_sensors import FakeSensors
 
-POLL_SECONDS = 5  # moves to settings.toml (HA_POLL_SECONDS) in M3
+# The same file deploy.sh copies to the board as CIRCUITPY/settings.toml
+DEFAULT_SETTINGS = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "hardware", "settings.toml"
+)
 
 SCENES = ("example_fish_scene", "pond")
 
@@ -39,12 +48,17 @@ def main(argv=None):
         "--height", type=int, default=64, help="matrix height in pixels"
     )
     parser.add_argument("--scale", type=int, default=8, help="screen px per LED")
+    parser.add_argument(
+        "--settings",
+        default=DEFAULT_SETTINGS,
+        help="settings.toml to read HA config from (default: hardware/settings.toml)",
+    )
     args = parser.parse_args(argv)
+    settings = load_settings(args.settings)
 
     scene = importlib.import_module("scenes." + args.scene)
-    app = App(
-        args.width, args.height, scene, FakeSensors(POLL_SECONDS), time.monotonic()
-    )
+    sensors = FakeSensors(poll_seconds(settings))
+    app = App(args.width, args.height, scene, sensors, time.monotonic())
 
     display = vm.VirtualDisplay(
         args.width,

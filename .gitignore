@@ -1,3 +1,5 @@
 **/__pycache__
 .vscode/
 .venv/
+# Holds the HA token; copy from src/hardware/settings.toml.example
+settings.toml
