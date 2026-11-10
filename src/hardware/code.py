@@ -13,8 +13,10 @@
 #       behaviors/
 #       creatures/
 #       graphics/
+#       home/
 #       scenes/
 #       sprites/
+#       ui/
 #
 # The scene modules import each other by top-level name (e.g.
 # `from _dio import dio`), so code.py adds /src to sys.path before importing.
@@ -40,12 +42,14 @@ sys.path.insert(0, "/src")
 
 from app import App  # noqa: E402 -- needs /src on sys.path
 from behaviors.flocking import FlockingBehavior  # noqa: E402
+from home.fake_sensors import FakeSensors  # noqa: E402
 import scenes.pond  # noqa: E402
 
 WIDTH, HEIGHT = 64, 64
 FPS = 30
 DEBUG = True  # time physics, render and refresh and print them to the serial console
 STATS_EVERY = 30  # frames between timing printouts on the serial console
+POLL_SECONDS = 5  # moves to settings.toml (HA_POLL_SECONDS) in M3
 
 # ---------------------------------------------------------------- matrix setup
 displayio.release_displays()
@@ -71,7 +75,7 @@ matrix = rgbmatrix.RGBMatrix(
 display = framebufferio.FramebufferDisplay(matrix, auto_refresh=False)
 
 # ---------------------------------------------------------------- app
-app = App(WIDTH, HEIGHT, scenes.pond)
+app = App(WIDTH, HEIGHT, scenes.pond, FakeSensors(POLL_SECONDS), time.monotonic())
 display.root_group = app.group
 
 # ---------------------------------------------------------------- timing

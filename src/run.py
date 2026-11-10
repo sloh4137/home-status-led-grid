@@ -15,9 +15,13 @@ forgiving than hardware (e.g. out-of-range bitmap writes).
 
 import argparse
 import importlib
+import time
 
 import simulator.virtual_matrix as vm
 from app import App
+from home.fake_sensors import FakeSensors
+
+POLL_SECONDS = 5  # moves to settings.toml (HA_POLL_SECONDS) in M3
 
 SCENES = ("example_fish_scene", "pond")
 
@@ -38,7 +42,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     scene = importlib.import_module("scenes." + args.scene)
-    app = App(args.width, args.height, scene)
+    app = App(
+        args.width, args.height, scene, FakeSensors(POLL_SECONDS), time.monotonic()
+    )
 
     display = vm.VirtualDisplay(
         args.width,
