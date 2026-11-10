@@ -2,6 +2,7 @@
 
 UNAVAILABLE = "--"
 OFFLINE_INTERVALS = 3  # show HA OFFLINE after this many intervals with no success
+OFFLINE = "HA OFFLINE"
 
 # (key, label, format); format=None shows the state as-is
 LINES = (
@@ -33,11 +34,21 @@ def is_offline(sensors, now, started):
     return now - last > OFFLINE_INTERVALS * sensors.interval_s
 
 
-def sensor_lines(values, offline=False):
-    """Panel lines, top to bottom. Offline shows only HA OFFLINE (on the bottom
-    line) rather than stale values."""
-    if offline:
-        return ["", "", "HA OFFLINE"]
+def status_message(sensors, now, started):
+    """A message that replaces the values, or None: the source's own message
+    (e.g. NO WIFI from home.no_sensors.NoSensors), else HA OFFLINE when reads
+    have stopped."""
+    message = getattr(sensors, "message", None)
+    if message:
+        return message
+    return OFFLINE if is_offline(sensors, now, started) else None
+
+
+def sensor_lines(values, message=None):
+    """Panel lines, top to bottom. A message (HA OFFLINE, NO WIFI, ...) shows
+    alone on the bottom line rather than stale values."""
+    if message:
+        return ["", "", message]
     return [
         label + " " + format_value(values.get(key), fmt)
         for key, label, fmt in LINES

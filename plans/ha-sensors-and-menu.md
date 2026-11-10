@@ -107,6 +107,7 @@ Extend `_FONT_3X5` with A–Z and `. - : > / °`, so text fits 16 characters × 
 - Add **net ms avg/max** for `sensors.poll()` to the `DEBUG` stats line.
 - Confirm the non-blocking `connect()` behaviour, and apply the `settimeout(0.05)` fallback if needed.
 - *Check:* the fps stays about the same and net max stays at a few ms, including with HA unreachable. Values update at both 1 s and 60 s.
+- *Implemented (pending hardware check):* boot shows `WIFI...` via `NoSensors`, then `App.set_sensors()` swaps in the client or a `NO WIFI` / `NO HA CFG` message. The connect step treats ETIMEDOUT (110/116) as "still connecting", because CircuitPython's `connect()` with timeout 0 is expected to raise it while the handshake is in flight. The fallback is `CONNECT_TIMEOUT_S = 0.05` in `code.py`. The stats line shows `net <avg> (max <max>) ms`.
 
 **M6 — Buttons + menu.**
 - Add `ButtonGestures`, `KeypadButtons`, sim key bindings, `Menu` and the menu panel, with Sensors ON/OFF and Hide menu.

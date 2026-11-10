@@ -51,6 +51,10 @@ _WOULD_BLOCK = _errnos(
 )
 # connect() on an already-connected socket: the non-blocking connect finished
 _IS_CONN = _errnos(("EISCONN",), (106, 127))
+# CircuitPython's connect() with timeout 0 waits 0 s for the handshake and
+# raises ETIMEDOUT while it is still in progress (Linux 110, ESP-IDF 116).
+# Only the connect step treats this as "not yet"; REQUEST_TIMEOUT_S bounds it.
+_CONNECT_PENDING = _WOULD_BLOCK | _errnos(("ETIMEDOUT",), (110, 116))
 
 
 def _errno_of(exc):
@@ -79,8 +83,9 @@ READOUT_ENTITIES = (
 )
 
 
-def from_settings(pool, settings, interval_s, now):
-    """Build an HAClient from settings.toml values, or None when HA_URL is unset."""
+def from_settings(pool, settings, interval_s, now, connect_timeout=0):
+    """Build an HAClient from settings.toml values, or None when HA_URL is unset.
+    Raises ValueError for an HA_URL it can't use."""
     url = settings.get("HA_URL")
     if not url:
         return None
@@ -91,13 +96,27 @@ def from_settings(pool, settings, interval_s, now):
         if entity_id:
             entities.append((key, entity_id))
     return HAClient(
-        pool, host, port, settings.get("HA_TOKEN", ""), entities, interval_s, now
+        pool,
+        host,
+        port,
+        settings.get("HA_TOKEN", ""),
+        entities,
+        interval_s,
+        now,
+        connect_timeout,
     )
 
 
 class HAClient:
-    def __init__(self, pool, host, port, token, entities, interval_s, now=0.0):
+    def __init__(
+        self, pool, host, port, token, entities, interval_s, now=0.0, connect_timeout=0
+    ):
+        """connect_timeout > 0 makes the first connect() block for up to that
+        many seconds instead of being non-blocking: a fallback for a socket
+        stack whose non-blocking connect never completes. A bounded stall, once
+        per request."""
         self.interval_s = interval_s
+        self._connect_timeout = connect_timeout
         self.values = {}
         self.last_ok = None
         self.changed = False
@@ -217,7 +236,7 @@ class HAClient:
         except OSError as e:
             self._fail(now, "socket: %s" % e)
             return
-        sock.settimeout(0)
+        sock.settimeout(self._connect_timeout)
         self._sock = sock
         self._sent = 0
         self._received = 0
@@ -229,11 +248,17 @@ class HAClient:
         # Non-blocking connect: the first call raises EINPROGRESS, later calls
         # raise EALREADY until it completes, then EISCONN (or the real error,
         # e.g. ECONNREFUSED). A call that returns normally also means connected.
+        sock = self._sock
         try:
-            self._sock.connect(self._addr)
+            sock.connect(self._addr)
         except OSError as e:
-            if _errno_of(e) not in _IS_CONN:
+            code = _errno_of(e)
+            if code in _CONNECT_PENDING and not self._connect_timeout:
+                return  # still connecting, try again next frame
+            if code not in _IS_CONN:
                 raise
+        if self._connect_timeout:
+            sock.settimeout(0)
         self._state = SENDING
 
     def _step_send(self):

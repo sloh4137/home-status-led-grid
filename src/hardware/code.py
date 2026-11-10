@@ -45,12 +45,17 @@ sys.path.insert(0, "/src")
 from app import App  # noqa: E402 -- needs /src on sys.path
 from behaviors.flocking import FlockingBehavior  # noqa: E402
 from config import load_settings, poll_seconds  # noqa: E402
-from home.fake_sensors import FakeSensors  # noqa: E402
+from home.ha_client import from_settings  # noqa: E402
+from home.no_sensors import NoSensors  # noqa: E402
 import scenes.pond  # noqa: E402
 
 WIDTH, HEIGHT = 64, 64
 FPS = 30
-DEBUG = True  # time physics, render and refresh and print them to the serial console
+DEBUG = True  # time physics, render, net and refresh; print them to the serial console
+# 0 = non-blocking connect() (normal). If HA never connects and the console
+# shows connect errors, set this to 0.05: connect() then blocks for up to 50 ms,
+# once per request.
+CONNECT_TIMEOUT_S = 0
 STATS_EVERY = 30  # frames between timing printouts on the serial console
 
 # ---------------------------------------------------------------- matrix setup
@@ -77,20 +82,60 @@ matrix = rgbmatrix.RGBMatrix(
 display = framebufferio.FramebufferDisplay(matrix, auto_refresh=False)
 
 # ---------------------------------------------------------------- app
-# HA config comes from CIRCUITPY/settings.toml (read with os.getenv)
-settings = load_settings()
-sensors = FakeSensors(poll_seconds(settings))
-app = App(WIDTH, HEIGHT, scenes.pond, sensors, time.monotonic())
+app = App(WIDTH, HEIGHT, scenes.pond, NoSensors("WIFI..."), time.monotonic())
 display.root_group = app.group
+display.refresh()  # show WIFI... while connecting, which can take seconds
+
+
+# ---------------------------------------------------------------- HA
+# HA config comes from CIRCUITPY/settings.toml (read with os.getenv).
+# CircuitPython usually joins CIRCUITPY_WIFI_SSID by itself at boot; connect
+# here only if it hasn't. This blocks, but only once at startup.
+def connect_sensors(settings):
+    if not settings.get("HA_URL"):
+        print("HA: no HA_URL in settings.toml")
+        return NoSensors("NO HA CFG")
+
+    import socketpool
+    import wifi
+
+    if not wifi.radio.connected:
+        ssid = settings.get("CIRCUITPY_WIFI_SSID")
+        if not ssid:
+            print("WiFi: no CIRCUITPY_WIFI_SSID in settings.toml")
+            return NoSensors("NO WIFI")
+        try:
+            wifi.radio.connect(ssid, settings.get("CIRCUITPY_WIFI_PASSWORD", ""))
+        except (ConnectionError, OSError) as e:
+            print("WiFi:", e)
+            return NoSensors("NO WIFI")
+    print("WiFi: %s" % wifi.radio.ipv4_address)
+
+    pool = socketpool.SocketPool(wifi.radio)
+    try:
+        return from_settings(
+            pool, settings, poll_seconds(settings), time.monotonic(),
+            CONNECT_TIMEOUT_S,
+        )
+    except ValueError as e:
+        print("HA:", e)
+        return NoSensors("NO HA CFG")
+
+
+sensors = connect_sensors(load_settings())
+app.set_sensors(sensors, time.monotonic())
 
 # ---------------------------------------------------------------- timing
-# With DEBUG on, physics, render() and display.refresh() are timed separately
-# and printed to the serial console every STATS_EVERY frames.
-# render() is called from inside the behavior's update(), so wrap it to
-# accumulate its time separately; physics = update time - render time.
+# With DEBUG on, physics, render(), sensors.poll() (net) and display.refresh()
+# are timed separately and printed to the serial console every STATS_EVERY
+# frames. render() and poll() are called from inside app.tick(), so they are
+# wrapped to accumulate their time separately;
+# physics = tick time - render time - net time.
 render_ns = 0
+net_ns = 0
 frames = 0
 update_total = render_total = refresh_total = 0
+net_total = net_max = 0
 stats_start = time.monotonic_ns()
 
 if DEBUG:
@@ -115,12 +160,23 @@ if DEBUG:
 
     scenes.pond.draw_frame = _timed_draw_frame
 
+    _poll = sensors.poll
+
+    def _timed_poll(now):
+        global net_ns
+        t = time.monotonic_ns()
+        _poll(now)
+        net_ns = time.monotonic_ns() - t
+
+    sensors.poll = _timed_poll
+
 
 def timed_frame(dt, now):
-    global render_ns, frames, update_total, render_total, refresh_total
-    global stats_start
+    global render_ns, net_ns, frames, update_total, render_total, refresh_total
+    global net_total, net_max, stats_start
 
     render_ns = 0
+    net_ns = 0
     t0 = time.monotonic_ns()
     app.tick(dt, now)
     t1 = time.monotonic_ns()
@@ -129,21 +185,27 @@ def timed_frame(dt, now):
 
     update_total += t1 - t0
     render_total += render_ns
+    net_total += net_ns
+    net_max = max(net_max, net_ns)
     refresh_total += t2 - t1
     frames += 1
     if frames == STATS_EVERY:
         elapsed = time.monotonic_ns() - stats_start
         print(
-            "fps %.1f | physics %.1f ms | render %.1f ms | refresh %.1f ms"
+            "fps %.1f | physics %.1f ms | render %.1f ms | net %.1f (max %.1f) ms"
+            " | refresh %.1f ms"
             % (
                 frames * 1e9 / elapsed,
-                (update_total - render_total) / frames / 1e6,
+                (update_total - render_total - net_total) / frames / 1e6,
                 render_total / frames / 1e6,
+                net_total / frames / 1e6,
+                net_max / 1e6,
                 refresh_total / frames / 1e6,
             )
         )
         frames = 0
         update_total = render_total = refresh_total = 0
+        net_total = net_max = 0
         stats_start = time.monotonic_ns()
 
 
