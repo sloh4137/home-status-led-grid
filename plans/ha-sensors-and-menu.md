@@ -127,6 +127,7 @@ Extend `_FONT_3X5` with A–Z and `. - : > / °`, so text fits 16 characters × 
 **M8 — Docs.**
 - Update the README / `code.py` header with the setup steps: settings keys, token creation, the button gestures, and that RESET only reboots.
 - Record the measured overlay and net costs in `OPTIMIZATIONS.md`.
+- *Implemented:* README covers setup, the token, the simulator, deploying, the status messages and the buttons; the `code.py` header lists the settings keys. `OPTIMIZATIONS.md` section 5 has the board measurements: each text layer adds ~2 ms of refresh, net averages 1.2–3.4 ms (worst ~9 ms), and with HA unreachable the worst frame is 3.8 ms. Physics (~95 ms) is well above the last flocking result (32 ms) and has not yet been compared with a run from before this branch.
 
 ## Files
 - **New:**

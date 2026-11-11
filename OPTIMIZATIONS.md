@@ -151,3 +151,47 @@ allocations per frame, plus garbage-collector pauses.
       then the creatures draw on top using free indices in the pond's palette.
       Refresh composites one layer with no transparency. Render timing also counts
       the pond blit (`scenes.pond.draw_frame`). Not yet measured on hardware.
+
+## 5. HA sensors and menu overlay
+
+The sensor readout and the menu are separate small `TextPanel` layers on top of
+the scene ([plan](plans/ha-sensors-and-menu.md)). They only redraw when their
+text changes, so after the first draw they shouldn't mark the screen dirty.
+`sensors.poll()` does at most one non-blocking socket step per frame and is
+timed as **net** in the `DEBUG` stats line (physics excludes it).
+
+### Results
+
+Pond scene, 50 boids, `DEBUG` stats averaged over 30 frames. Ranges span the
+stats lines captured; net max is the worst across them.
+
+| Setup                                   | FPS | Physics (ms) | Render (ms) | Net avg / max (ms) | Refresh (ms) |
+| --------------------------------------- | --- | ------------ | ----------- | ------------------ | ------------ |
+| Readout hidden (`SENSORS OFF`), menu hidden | 7.3 | 92.2–94.0 | 26.5–27.8 | 1.5–2.1 / 8.2 | 13.5–14.6 |
+| Readout shown, HA reachable, 5 s poll   | 7.2–7.3 | 94.1–95.4 | 24.0–24.2 | 1.2–1.5 / 8.3 | 15.7–16.4 |
+| Readout shown, 1 s poll                 | 7.0–7.3 | 92.8–96.8 | 24.1–26.9 | 3.3–3.4 / 9.2 | 15.8–16.1 |
+| Readout + menu shown                    | 7.0 | 94.3–97.6 | 25.1–26.9 | 2.1 / 8.8 | 17.6–18.2 |
+| HA unreachable (wrong IP)               | 6.8–7.2 | 97.5–101.3 | 24.8–28.6 | 0.3–1.5 / 3.8 | 16.1–16.8 |
+
+- Each visible text layer adds ~2 ms of refresh (13.5–14.6 ms with nothing
+  shown, 15.7–16.4 with the readout, 17.6–18.2 with the menu too). FPS stays
+  at ~7 in every setup, so the `bitmaptools.blit` fallback isn't needed.
+- Net averages 1.2–1.5 ms at a 5 s poll and 3.3–3.4 ms at 1 s, since a request
+  is in progress on more frames. The worst frame stays at ~9 ms either way:
+  one bounded socket step.
+- With HA unreachable the worst frame is 3.8 ms while connecting, then
+  0.3–0.5 ms during the backoff. The animation doesn't stall.
+- Physics is ~92–101 ms in every row, much higher than the 32 ms in the last
+  flocking row above. It is `app.tick()` minus render and net, so it includes
+  the menu, button and readout code. Not yet compared against a run from
+  before this branch.
+
+On the desktop the worst `poll()` was ≤0.3 ms across OK, 404, 401, a slow
+server (timeout), a refused port and a blackholed IP.
+
+- The `settimeout(0.05)` fallback for `connect()` was dropped: CircuitPython's
+  `connect()` polls in 100 ms steps, so it stalled for up to 100 ms per retry.
+  Non-blocking `connect()` (ETIMEDOUT, then EALREADY, then EISCONN) has no stall.
+- If refresh rises with the panels shown, the fallback is to blit the
+  pre-rendered panel into the pond canvas with
+  `bitmaptools.blit(..., skip_source_index=0)` so displayio composites one layer.

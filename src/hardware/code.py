@@ -29,9 +29,21 @@
 # animations are developed and previewed in the simulator, then run here
 # unchanged.
 #
+# ./deploy.sh from the repo root does all of the copying (see README.md).
+#
+# Home Assistant setup, in settings.toml:
+#   CIRCUITPY_WIFI_SSID / CIRCUITPY_WIFI_PASSWORD   WiFi
+#   HA_URL            e.g. "http://192.168.1.10:8123" (use an IP, plain http)
+#   HA_TOKEN          HA -> your profile -> Security -> Long-lived access tokens
+#   HA_CO2_ENTITY, HA_TEMPERATURE_ENTITY, HA_HUMIDITY_ENTITY   entity IDs
+#   HA_POLL_SECONDS   1-60, default 5
+# The readout shows WIFI... while connecting, then the values, or NO WIFI /
+# NO HA CFG if setup failed, or HA OFFLINE after 3 intervals without a read.
+#
 # Buttons: UP / DOWN open the menu, a tap moves the highlight and holding
 # either for ~0.6 s selects. Items: ROTATE 90, SENSORS ON/OFF, HIDE MENU.
-# RESET is a hardware reset and only reboots.
+# Settings aren't saved and reset on reboot. RESET is a hardware reset and
+# only reboots; code can't read it.
 #
 # Hardware note: the 64x64 panel needs the Address-E solder jumper on the
 # MatrixPortal closed (middle pad shorted to "8" for Adafruit panels).
