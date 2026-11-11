@@ -1,14 +1,32 @@
-# Copy to the CIRCUITPY drive as settings.toml and fill in your values.
-# CircuitPython reads these with os.getenv() -- no secrets.py needed.
+# Copy to src/hardware/settings.toml and fill in your values; deploy.sh copies
+# it to the CIRCUITPY drive. CircuitPython reads these with os.getenv() -- no
+# secrets.py needed.
+#
+# The desktop simulator reads the same file (or `run.py --settings PATH`).
+# Without the file or HA_URL it shows fake sensor values instead.
+# settings.toml holds your token, so it is git-ignored.
 
+# WiFi (hardware only)
 CIRCUITPY_WIFI_SSID = "your-wifi-ssid"
 CIRCUITPY_WIFI_PASSWORD = "your-wifi-password"
 
-# Home Assistant on your LAN (no cloud needed)
-HA_URL = "http://10.41.2.101:8123"
+# Home Assistant on your LAN (no cloud needed). A hostname is resolved once at startup.
+# An IP is the safest choice: mDNS names like homeassistant.local often don't resolve
+# on WSL2 or CircuitPython. Plain http only.
+HA_URL = "http://192.1.1.1:8123"
 # Long-lived access token: HA -> your profile -> Security -> Long-lived access tokens
 HA_TOKEN = "paste-token-here"
 
-# Entity IDs this project reads (adjust to your actual entities)
-HUMIDITY_ENTITY = "sensor.bathroom_humidity"
+# Entity IDs for the sensor readout (adjust to your actual entities)
+HA_CO2_ENTITY = "sensor.living_room_co2"
+HA_TEMPERATURE_ENTITY = "sensor.living_room_temperature"
+HA_HUMIDITY_ENTITY = "sensor.living_room_humidity"
+
+# Seconds between reads, 1-60 (clamped; default 5)
+HA_POLL_SECONDS = 5
+
+# Other entities this project reads
 WASHER_ENTITY = "sensor.washer_status"
+
+# (later) Comma-separated energy entities for the per-device power readout
+# HA_POWER_ENTITIES = "sensor.fridge_power,sensor.washer_power"
