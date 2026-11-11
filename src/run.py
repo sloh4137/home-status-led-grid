@@ -9,6 +9,9 @@ to the board as CIRCUITPY/settings.toml; --settings points at a different file.
 With HA_URL set it reads live values through home.ha_client.HAClient, otherwise
 it shows FakeSensors values.
 
+Keys stand in for the board's side buttons: Up / Down tap, Enter / Space hold
+(select). The first press opens the menu.
+
 Renders into a tkinter window (simulator/virtual_matrix.VirtualDisplay) and
 drives the same ``App`` as the MatrixPortal's code.py, so scenes, overlays and
 the menu behave the same in both places.
@@ -30,6 +33,7 @@ from app import App
 from config import load_settings, poll_seconds
 from home.fake_sensors import FakeSensors
 from home.ha_client import from_settings
+from ui.buttons import SimButtons
 
 # The same file deploy.sh copies to the board as CIRCUITPY/settings.toml
 DEFAULT_SETTINGS = os.path.join(
@@ -68,7 +72,8 @@ def main(argv=None):
     if sensors is None:
         print("No HA_URL in %s; showing fake sensor values" % args.settings)
         sensors = FakeSensors(poll_seconds(settings))
-    app = App(args.width, args.height, scene, sensors, now)
+    buttons = SimButtons()
+    app = App(args.width, args.height, scene, sensors, now, buttons)
 
     display = vm.VirtualDisplay(
         args.width,
@@ -77,6 +82,7 @@ def main(argv=None):
         title="%s -- virtual %dx%d" % (args.scene, args.width, args.height),
     )
     display.show(app.group)
+    display.on_key(buttons.key)
     display.run(app.tick, fps=30)
 
 

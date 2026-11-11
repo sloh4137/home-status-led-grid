@@ -276,6 +276,7 @@ class VirtualDisplay:
 
     display.show(group)  -- like FramebufferDisplay.show()
     display.run(update)   -- calls update(dt, now) then redraws, at ~fps
+    display.on_key(fn)    -- calls fn(keysym) on each key press, e.g. "Up"
     """
 
     def __init__(self, width=64, height=64, scale=8, title="Virtual LED Matrix"):
@@ -317,6 +318,9 @@ class VirtualDisplay:
 
     def show(self, group):
         self._group = group
+
+    def on_key(self, callback):
+        self._root.bind("<KeyPress>", lambda event: callback(event.keysym))
 
     def refresh(self):
         frame = composite(self._group, self.width, self.height)

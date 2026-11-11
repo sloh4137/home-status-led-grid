@@ -29,6 +29,9 @@
 # animations are developed and previewed in the simulator, then run here
 # unchanged.
 #
+# Buttons: UP / DOWN open the menu, a tap moves the highlight and holding
+# either for ~0.6 s selects. RESET is a hardware reset and only reboots.
+#
 # Hardware note: the 64x64 panel needs the Address-E solder jumper on the
 # MatrixPortal closed (middle pad shorted to "8" for Adafruit panels).
 
@@ -48,6 +51,7 @@ from config import load_settings, poll_seconds  # noqa: E402
 from home.ha_client import from_settings  # noqa: E402
 from home.no_sensors import NoSensors  # noqa: E402
 import scenes.pond  # noqa: E402
+from ui.buttons import KeypadButtons  # noqa: E402
 
 WIDTH, HEIGHT = 64, 64
 FPS = 30
@@ -85,7 +89,14 @@ matrix = rgbmatrix.RGBMatrix(
 display = framebufferio.FramebufferDisplay(matrix, auto_refresh=False)
 
 # ---------------------------------------------------------------- app
-app = App(WIDTH, HEIGHT, scenes.pond, NoSensors("WIFI..."), time.monotonic())
+app = App(
+    WIDTH,
+    HEIGHT,
+    scenes.pond,
+    NoSensors("WIFI..."),
+    time.monotonic(),
+    KeypadButtons(),
+)
 display.root_group = app.group
 display.refresh()  # show WIFI... while connecting, which can take seconds
 

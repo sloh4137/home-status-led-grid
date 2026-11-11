@@ -117,6 +117,7 @@ Extend `_FONT_3X5` with A–Z and `. - : > / °`, so text fits 16 characters × 
 **M6 — Buttons + menu.**
 - Add `ButtonGestures`, `KeypadButtons`, sim key bindings, `Menu` and the menu panel, with Sensors ON/OFF and Hide menu.
 - *Check:* on the real buttons, a tap moves the highlight and a hold selects. Hide closes the menu and any press reopens it. Sensors OFF hides the readout.
+- *Implemented:* every button source has `poll(now)`, which returns that frame's gestures: `KeypadButtons`, `SimButtons` (fed by `VirtualDisplay.on_key()`) or `NoButtons`. `App(..., buttons)` drains them into `Menu.handle()`. The menu panel sits at the top, is hidden until the first press, and only redraws on a gesture. Sensors keep polling while the readout is hidden, so the values are current when it comes back. The font already had A–Z from M1.
 
 **M7 — Rotation.**
 - Add the `ROTATE 90` item: `display.rotation` on hardware, plus a `rotation` property in `VirtualDisplay.refresh()` that remaps indices for a square panel.
