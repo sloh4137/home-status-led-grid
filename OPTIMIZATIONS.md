@@ -167,6 +167,7 @@ stats lines captured; net max is the worst across them.
 
 | Setup                                   | FPS | Physics (ms) | Render (ms) | Net avg / max (ms) | Refresh (ms) |
 | --------------------------------------- | --- | ------------ | ----------- | ------------------ | ------------ |
+| Before this branch (`b328ea7`, no App or HA) | 8.7–8.8 | 82.7–87.0 | 14.3–17.2 | – | 13.2–13.8 |
 | Readout hidden (`SENSORS OFF`), menu hidden | 7.3 | 92.2–94.0 | 26.5–27.8 | 1.5–2.1 / 8.2 | 13.5–14.6 |
 | Readout shown, HA reachable, 5 s poll   | 7.2–7.3 | 94.1–95.4 | 24.0–24.2 | 1.2–1.5 / 8.3 | 15.7–16.4 |
 | Readout shown, 1 s poll                 | 7.0–7.3 | 92.8–96.8 | 24.1–26.9 | 3.3–3.4 / 9.2 | 15.8–16.1 |
@@ -181,10 +182,13 @@ stats lines captured; net max is the worst across them.
   one bounded socket step.
 - With HA unreachable the worst frame is 3.8 ms while connecting, then
   0.3–0.5 ms during the backoff. The animation doesn't stall.
-- Physics is ~92–101 ms in every row, much higher than the 32 ms in the last
-  flocking row above. It is `app.tick()` minus render and net, so it includes
-  the menu, button and readout code. Not yet compared against a run from
-  before this branch.
+- Physics is ~92–101 ms in every row. Most of the gap from the 32 ms in the
+  last flocking row came before this branch: the pre-branch build already runs
+  physics at ~85 ms. This branch adds ~8 ms of physics and ~11 ms of render
+  with nothing shown (8.8 → 7.3 fps), although the scene and render code are
+  unchanged and the timing code is the same. Physics here is `app.tick()` minus
+  render and net, so it includes the menu, button and readout code. Not yet
+  traced to a commit.
 
 On the desktop the worst `poll()` was ≤0.3 ms across OK, 404, 401, a slow
 server (timeout), a refused port and a blackholed IP.
