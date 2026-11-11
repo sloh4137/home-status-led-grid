@@ -9,6 +9,10 @@ or home.no_sensors.NoSensors for a status message like NO WIFI).
 
 ``buttons`` is anything with poll(now) -> gestures (ui.buttons.KeypadButtons,
 SimButtons or NoButtons). The gestures drive the menu at the top of the screen.
+
+``set_rotation(degrees)`` is called by the ROTATE 90 menu item with 0, 90,
+180 or 270: display.rotation on hardware, VirtualDisplay.rotation on the
+desktop. The whole group rotates, so the text panels turn with the scene.
 """
 
 from home.readout import sensor_lines, status_message
@@ -20,10 +24,21 @@ SENSOR_LINES = 3
 
 
 class App:
-    def __init__(self, width, height, scene_module, sensors, now, buttons=None):
+    def __init__(
+        self,
+        width,
+        height,
+        scene_module,
+        sensors,
+        now,
+        buttons=None,
+        set_rotation=None,
+    ):
         self.width = width
         self.height = height
         self.buttons = buttons or NoButtons()
+        self.rotation = 0
+        self._set_rotation = set_rotation
         self.group, self._update_scene = scene_module.create_scene(width, height)
         # Sensor readout anchored to the bottom edge
         self.sensor_panel = TextPanel(
@@ -34,6 +49,7 @@ class App:
         self.sensors_on = True
         self.menu = Menu(
             [
+                (lambda: "ROTATE 90", self._rotate),
                 (self._sensors_label, self._toggle_sensors),
                 (lambda: "HIDE MENU", self._hide_menu),
             ]
@@ -44,6 +60,11 @@ class App:
         self.menu_panel.hidden = True
 
     # ------------------------------------------------------------ menu items
+    def _rotate(self):
+        self.rotation = (self.rotation + 90) % 360
+        if self._set_rotation:
+            self._set_rotation(self.rotation)
+
     def _sensors_label(self):
         return "SENSORS ON" if self.sensors_on else "SENSORS OFF"
 

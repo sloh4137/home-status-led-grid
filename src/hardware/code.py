@@ -30,7 +30,8 @@
 # unchanged.
 #
 # Buttons: UP / DOWN open the menu, a tap moves the highlight and holding
-# either for ~0.6 s selects. RESET is a hardware reset and only reboots.
+# either for ~0.6 s selects. Items: ROTATE 90, SENSORS ON/OFF, HIDE MENU.
+# RESET is a hardware reset and only reboots.
 #
 # Hardware note: the 64x64 panel needs the Address-E solder jumper on the
 # MatrixPortal closed (middle pad shorted to "8" for Adafruit panels).
@@ -88,6 +89,12 @@ matrix = rgbmatrix.RGBMatrix(
 )
 display = framebufferio.FramebufferDisplay(matrix, auto_refresh=False)
 
+
+def set_rotation(degrees):
+    # The panel is square, so the group's width/height stay the same
+    display.rotation = degrees
+
+
 # ---------------------------------------------------------------- app
 app = App(
     WIDTH,
@@ -96,6 +103,7 @@ app = App(
     NoSensors("WIFI..."),
     time.monotonic(),
     KeypadButtons(),
+    set_rotation,
 )
 display.root_group = app.group
 display.refresh()  # show WIFI... while connecting, which can take seconds

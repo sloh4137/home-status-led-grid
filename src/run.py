@@ -73,14 +73,17 @@ def main(argv=None):
         print("No HA_URL in %s; showing fake sensor values" % args.settings)
         sensors = FakeSensors(poll_seconds(settings))
     buttons = SimButtons()
-    app = App(args.width, args.height, scene, sensors, now, buttons)
-
     display = vm.VirtualDisplay(
         args.width,
         args.height,
         scale=args.scale,
         title="%s -- virtual %dx%d" % (args.scene, args.width, args.height),
     )
+
+    def set_rotation(degrees):
+        display.rotation = degrees
+
+    app = App(args.width, args.height, scene, sensors, now, buttons, set_rotation)
     display.show(app.group)
     display.on_key(buttons.key)
     display.run(app.tick, fps=30)

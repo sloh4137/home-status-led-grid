@@ -122,6 +122,7 @@ Extend `_FONT_3X5` with A–Z and `. - : > / °`, so text fits 16 characters × 
 **M7 — Rotation.**
 - Add the `ROTATE 90` item: `display.rotation` on hardware, plus a `rotation` property in `VirtualDisplay.refresh()` that remaps indices for a square panel.
 - *Check:* four selections cycle 0→90→180→270→0 on both targets, with the menu and sensor text rotating with the scene.
+- *Implemented:* `App(..., set_rotation)` gets the new angle from the `ROTATE 90` item (first in the menu). `code.py` sets `display.rotation`. `run.py` sets `VirtualDisplay.rotation`, which builds a physical→logical index map once and applies it to each composited frame (clockwise, like displayio; square panels only). The whole group rotates, so both text panels turn with the scene.
 
 **M8 — Docs.**
 - Update the README / `code.py` header with the setup steps: settings keys, token creation, the button gestures, and that RESET only reboots.

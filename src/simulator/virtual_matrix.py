@@ -268,6 +268,25 @@ def flip_horizontal(bitmap):
 # ----------------------------------------------------------------------------
 
 
+def _rotation_map(width, height, degrees):
+    """For each physical pixel (row-major), the index of the logical pixel
+    shown there when the image is turned ``degrees`` clockwise. None for 0."""
+    if degrees == 0:
+        return None
+    last_x, last_y = width - 1, height - 1
+    remap = []
+    for py in range(height):
+        for px in range(width):
+            if degrees == 90:
+                x, y = py, last_x - px
+            elif degrees == 180:
+                x, y = last_x - px, last_y - py
+            else:  # 270
+                x, y = last_y - py, px
+            remap.append(y * width + x)
+    return remap
+
+
 class VirtualDisplay:
     """A tkinter window pretending to be the LED panel.
 
@@ -277,6 +296,8 @@ class VirtualDisplay:
     display.show(group)  -- like FramebufferDisplay.show()
     display.run(update)   -- calls update(dt, now) then redraws, at ~fps
     display.on_key(fn)    -- calls fn(keysym) on each key press, e.g. "Up"
+    display.rotation = 90 -- like displayio's rotation: 0/90/180/270, clockwise
+                             (square panels only, so width/height don't swap)
     """
 
     def __init__(self, width=64, height=64, scale=8, title="Virtual LED Matrix"):
@@ -287,6 +308,8 @@ class VirtualDisplay:
         self.scale = scale
         self._group = None
         self._last = [(0, 0, 0)] * (width * height)
+        self._rotation = 0
+        self._remap = None  # physical index -> logical index, None at 0
 
         self._root = tk.Tk()
         self._root.title(title)
@@ -322,8 +345,24 @@ class VirtualDisplay:
     def on_key(self, callback):
         self._root.bind("<KeyPress>", lambda event: callback(event.keysym))
 
+    @property
+    def rotation(self):
+        return self._rotation
+
+    @rotation.setter
+    def rotation(self, degrees):
+        degrees %= 360
+        if degrees not in (0, 90, 180, 270):
+            raise ValueError("rotation must be 0, 90, 180 or 270")
+        if degrees and self.width != self.height:
+            raise ValueError("rotation needs a square panel")
+        self._rotation = degrees
+        self._remap = _rotation_map(self.width, self.height, degrees)
+
     def refresh(self):
         frame = composite(self._group, self.width, self.height)
+        if self._remap is not None:
+            frame = [frame[i] for i in self._remap]
         for i, (rgb, last) in enumerate(zip(frame, self._last)):
             if rgb != last:
                 y, x = divmod(i, self.width)
