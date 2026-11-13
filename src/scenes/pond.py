@@ -3,13 +3,11 @@ Scene with procedural generated fish
 """
 
 from _dio import dio
-from creatures.spine import CreatureSpine
-from creatures.fish import Fish
 from creatures.fish_boid import FishBoid
+from creatures.species import KOI, KOI_WANDER as KOI_WANDER_MOTION
+from creatures.spine_creature import SpineCreature
 from graphics.vector import Vector
-from behaviors.circle import CircleBehavior
 from behaviors.flocking import FlockingBehavior
-from behaviors.wander import WanderBehavior
 from _imageload import load_image
 from graphics.graphics_helpers import dim_palette, make_canvas
 
@@ -26,6 +24,7 @@ POND_BRIGHTNESS = 0.1  # 0.0-1.0, applied to the pond sprite's palette
 # colors go in the free indices after them.
 KOI_COLOR = 6
 BOID_COLOR = 7
+KOI_RGB = 0x2E9BFF
 
 # Background boids: independent flocks of BOIDS_PER_FLOCK, each small enough for
 # the direct neighbour loop (under grid_min_boids)
@@ -90,50 +89,28 @@ def create_scene(width=64, height=64):
 
     group = dio.Group()
     palette, update_pond, draw_pond = load_pond_water(width, height)
-    palette[KOI_COLOR] = Fish.COLOR
+    palette[KOI_COLOR] = KOI_RGB
     palette[BOID_COLOR] = FishBoid.COLOR
     canvas = make_canvas(group, width, height, palette)
 
-    # Koi Fish Flock
-    koi_fish = [
-        Fish(Vector(32, 32), 1, KOI_COLOR),
-        Fish(Vector(16, 16), 0.5, KOI_COLOR),
-        Fish(Vector(40, 40), 0.5, KOI_COLOR),
+    # Starting fish as (species, position, size percent)
+    fish = [
+        (KOI, (32, 32), 100),
+        (KOI, (16, 16), 50),
+        (KOI, (40, 40), 50),
     ]
-    if KOI_WANDER:
-        koi_behavior = WanderBehavior(
-            canvas,
-            width,
-            height,
-            outside_window_size=30,
-            wall_avoid_distance=30,
-            avoidance_force=100.0,
-            min_speed=1.0,
-            max_speed=25.0,
-            cruise_speed=20.0,
-            max_turn=1.5,
-            retarget=(1.0, 4.0),
-        )
-    else:
-        koi_behavior = FlockingBehavior(
-            canvas,
-            width,
-            height,
-            outside_window_size=30,
-            wall_avoid_distance=30,
-            perception_radius=10,
-            fov_degrees=90,
-            separation_force=50.0,
-            alignment_force=5.0,
-            cohesion_force=5.0,
-            avoidance_force=100.0,
-            random_steer=50,
-            min_speed=1.0,
-            max_speed=25.0,
-            cruise_speed=20.0,
-            cruise_force=2.0,
-        )
-    koi_behavior.add(koi_fish)
+    # One behavior per species present, built from its motion record, so
+    # species never flock together
+    behaviors = {}
+    for species, (x, y), size in fish:
+        behavior = behaviors.get(species)
+        if behavior is None:
+            motion = species.motion
+            if KOI_WANDER and species is KOI:
+                motion = KOI_WANDER_MOTION
+            behavior = behaviors[species] = motion.build(canvas, width, height)
+        behavior.add([SpineCreature(species, Vector(x, y), size, KOI_COLOR)])
+    species_behaviors = list(behaviors.values())
 
     # Background boid flocks, each starting in its own third of the tank. They
     # don't see each other, so they pass through one another as separate schools.
@@ -177,7 +154,8 @@ def create_scene(width=64, height=64):
         # behavior draws its creatures on top
         update_pond(dt)
         draw_pond(canvas)
-        koi_behavior.update(dt)
+        for behavior in species_behaviors:
+            behavior.update(dt)
         for flock in boid_flocks:
             flock.update(dt)
 

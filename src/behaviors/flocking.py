@@ -322,3 +322,16 @@ class FlockingBehavior(SwimBehavior):
 
         self.vxs = new_vxs
         self.vys = new_vys
+
+
+class Flock:
+    """
+    Motion record for a species: the FlockingBehavior settings as data. The
+    species table holds one, and the pond builds one behavior per species.
+    """
+
+    def __init__(self, **settings):
+        self.settings = settings
+
+    def build(self, bitmap, width, height):
+        return FlockingBehavior(bitmap, width, height, **self.settings)

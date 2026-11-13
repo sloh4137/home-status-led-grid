@@ -356,3 +356,45 @@ Pond on the board, same setup as M3 (3 koi, 3 × 10 boids, readout shown).
   rows are ~2.3 ms slower than M3's (11.8 vs 9.4 ms) although the boid code
   didn't change in M3.5 and the bench is seeded. Unexplained; worth a re-run
   before reading anything into it.
+
+### M4: species table + generic body
+
+The koi is now a `SpineCreature` built from the `KOI` species record, and the
+pond builds one behavior per species from its motion record. `render` reads
+per-joint radii precomputed by `set_size` instead of computing
+`ceil(width * scale / 2)` per joint per frame. Pond on the board, same setup
+as M3.5, `DEBUG` stats over 4 lines:
+
+| Setup | FPS | Physics (ms) | Render (ms) | Net avg / max (ms) | Refresh (ms) |
+| ----- | --- | ------------ | ----------- | ------------------ | ------------ |
+| M3.5 (for comparison) | 14.1–16.7 | 29.4–35.3 | 14.6–16.8 | 0.2–2.4 / 37.1 | 14.9–16.1 |
+| M4: species + `SpineCreature` | 14.5–16.2 | 30.7–33.5 | 13.0–18.8 | 0.2–2.1 / 8.6 | 14.5–16.6 |
+
+- Same as M3.5 within noise, as expected: on the desktop a seeded 200-frame
+  run of the pond is pixel-identical. The 18.8 ms render line is also the
+  slowest-fps line, with the biggest net spike; the 13.0 ms line is the best
+  render so far, but 4 lines can't show whether the precomputed radii help.
+
+`bench_flock.py` on the board, same columns as the M3.5 table:
+
+| Flock | n | Steer direct | Steer grid | Steer direct, all | Steer grid, all | Total direct | Total grid |
+| ----- | - | ------------ | ---------- | ----------------- | --------------- | ------------ | ---------- |
+| koi   | 4  | 1.34  | 2.05  | 2.32  | 3.34  | 3.50  | 4.26  |
+| koi   | 8  | 2.50  | 3.52  | 4.42  | 5.98  | 6.40  | 7.49  |
+| koi   | 16 | 5.39  | 6.56  | 10.36 | 11.74 | 12.92 | 14.07 |
+| koi   | 24 | 9.26  | 9.75  | 18.89 | 19.00 | 20.33 | 20.97 |
+| koi   | 32 | 13.46 | 12.51 | 29.50 | 27.79 | 28.31 | 27.50 |
+| boids | 3 × 10 | 16.18 | 18.74 | – | – | 19.55 | 23.16 |
+| boids | 1 × 50 | 27.49 | 21.11 | – | – | 31.38 | 25.04 |
+
+- **The koi rows match M3.5** to within ~0.5 ms everywhere, so
+  `SpineCreature` costs the same as the old `Fish`. The crossover is
+  unchanged (even at 24, grid ahead at 32).
+- The 1 × 50 boid rows match M3 and M3.5 again (27.5 ms direct steer).
+- **The 3 × 10 boid rows keep drifting up**, with no boid code changes:
+  direct steer 9.4 (M3) → 11.8 (M3.5) → 16.2 ms (M4). The pond's `DEBUG`
+  physics didn't move, so it looks like a bench artifact rather than a
+  regression. One guess: these rows run after all the koi rows, on a heap
+  that the earlier rows left more fragmented, and three small flocks
+  allocate more separate lists than one big one. Re-running only the boid
+  rows on a fresh boot would tell.

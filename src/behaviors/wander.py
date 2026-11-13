@@ -155,3 +155,16 @@ class WanderBehavior(SwimBehavior):
                 vy *= scale
             vxs[i] = vx
             vys[i] = vy
+
+
+class Wander:
+    """
+    Motion record for a species: the WanderBehavior settings as data. The
+    species table holds one, and the pond builds one behavior per species.
+    """
+
+    def __init__(self, **settings):
+        self.settings = settings
+
+    def build(self, bitmap, width, height):
+        return WanderBehavior(bitmap, width, height, **self.settings)

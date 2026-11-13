@@ -304,6 +304,7 @@ Example: a lightning fish that appears only while the washing machine is running
 
 **M4: Species table + generic body.**
 - Add `species.py` with `KOI` only, and `spine_creature.py` on top of the M3.5 `CreatureSpine`. Port the koi and remove `fish.py`. `Species` already takes `lifecycle` and `persist` (both default `True`), for the future special fish.
+  - Done: the `Flock` / `Wander` motion records live next to their behaviors (`flocking.py`, `wander.py`). `SpineCreature(species, origin, size, color_index)` takes the size in percent until the genome exists (M9), and `set_size` precomputes the link, per-joint radii and `render_radius`, ready for growth steps. The pond builds one behavior per species present. On the desktop, a seeded 200-frame run of the pond is pixel-identical to M3.5. On the board, `DEBUG` shows 14.5–16.2 fps and 30.7–33.5 ms physics, the same as M3.5 (OPTIMIZATIONS.md "M4").
 - *Check:* the pond looks and performs the same as after M3.5.
 
 **M5: Shared colors + CO2 brightness.**

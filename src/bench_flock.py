@@ -19,8 +19,9 @@ import time
 
 from _dio import dio
 from behaviors.flocking import FlockingBehavior
-from creatures.fish import Fish
 from creatures.fish_boid import FishBoid
+from creatures.species import KOI
+from creatures.spine_creature import SpineCreature
 from graphics.vector import Vector
 
 WIDTH = HEIGHT = 64
@@ -52,9 +53,10 @@ def koi_flock(canvas, n, grid, steer_half=True):
     )
     flock.add(
         [
-            Fish(
+            SpineCreature(
+                KOI,
                 Vector(random.uniform(0, WIDTH), random.uniform(0, HEIGHT)),
-                random.choice((0.5, 1)),
+                random.choice((50, 100)),
                 6,
             )
             for _ in range(n)
