@@ -88,10 +88,10 @@ class Species:
 
 KOI = Species(
     name="koi",
-    joints=10,
+    joints=9,
     link=4,
     # widths=(8, 10, 10, 10, 9, 8, 6, 5, 3, 2),
-    widths=(6, 8, 8, 8, 7, 6, 4, 3, 2, 2),
+    widths=(6, 8, 8, 8, 7, 6, 5, 3, 2),
     angle_limit=pi / 8,
     varieties=KOI_VARIETIES,
     # Pectoral pair behind the head and a forked tail
@@ -236,4 +236,7 @@ KOI_WANDER = Wander(
     retarget=(1.0, 4.0),
 )
 
-SPECIES_BY_NAME = {s.name: s for s in (KOI, CATFISH, STURGEON, TURTLE)}
+# Every species, in draw order (bottom first): the bottom dwellers under the
+# turtle, the koi on top
+SPECIES = (CATFISH, STURGEON, TURTLE, KOI)
+SPECIES_BY_NAME = {s.name: s for s in SPECIES}

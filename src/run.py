@@ -16,9 +16,9 @@ above 800 ppm) and 0 goes back to the slow 400-2200 ppm sweep.
 Keys stand in for the board's side buttons: Up / Down tap, Enter / Space hold
 (select). The first press opens the menu.
 
-Menu settings are saved to --state (default: state.json at the repo root,
-git-ignored) at most once per PERSIST_SECONDS, and once more when the window
-closes. It's the same JSON format as the board's state. Edit it while the
+Menu settings and the pond's fish are saved to --state (default: state.json
+at the repo root, git-ignored) at most once per PERSIST_SECONDS, and once
+more when the window closes. It's the same JSON format as the board's state. Edit it while the
 simulator is stopped; a running simulator overwrites it on its next save.
 
 Renders into a tkinter window (simulator/virtual_matrix.VirtualDisplay) and

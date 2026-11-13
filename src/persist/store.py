@@ -3,6 +3,7 @@
     store = Store(NvmBackend(microcontroller.nvm), persist_seconds(settings), now,
                   import_path="/state.json")
     doc = store.load()                       # parsed document (import applied), or None
+    store.section("pond")                    # one section of the loaded document, or None
     store.provide("settings", app.settings)  # called at save time for that section
     store.mark_dirty()                       # after any change worth keeping
     store.tick(now)                          # once per frame; saves at most once per interval
@@ -55,6 +56,8 @@ class Store:
         self.notice = None
         self._last_save = now
         self._sections = {}
+        # The document as loaded (import applied), or None
+        self.doc = None
 
     def load(self):
         try:
@@ -66,7 +69,13 @@ class Store:
         doc = document.parse(text)
         if self.import_path:
             doc = self._import(doc)
+        self.doc = doc
         return doc
+
+    def section(self, name):
+        """The loaded document's ``name`` section (unvalidated), or None."""
+        doc = self.doc
+        return doc.get(name) if doc else None
 
     def _import(self, doc):
         path = self.import_path

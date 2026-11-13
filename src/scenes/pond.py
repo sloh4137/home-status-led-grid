@@ -6,17 +6,10 @@ from _dio import dio
 from creatures import colors
 from creatures.colors import CreatureColors
 from creatures.fish_boid import FishBoid
-from creatures.species import (
-    CATFISH,
-    KOI,
-    KOI_WANDER as KOI_WANDER_MOTION,
-    STURGEON,
-    TURTLE,
-)
-from creatures.spine_creature import SpineCreature
-from creatures.varieties import random_variety
+from creatures.species import KOI, KOI_WANDER as KOI_WANDER_MOTION
 from graphics.vector import Vector
 from behaviors.flocking import FlockingBehavior
+from behaviors.lifecycle import Pond
 from _imageload import load_image
 from graphics.graphics_helpers import dim_palette, make_canvas
 
@@ -89,11 +82,16 @@ def load_pond_water(width, height):
     return palette, update, draw
 
 
-def create_scene(width=64, height=64):
+def create_scene(width=64, height=64, store=None):
     """
     Build the scene. Returns (group, update(dt), set_sensors(values)) for the
     main loop. set_sensors gets the whole sensor values dict whenever it
     changes; the CO2 level dims the creatures (not the water).
+
+    The fish come from the store's ``pond`` section (behaviors/lifecycle.py),
+    or a fresh pond without one; the store then saves the pond with the rest
+    of the document. A fresh or repaired pond marks the store dirty, so the
+    fixed version is what gets saved.
     """
 
     group = dio.Group()
@@ -101,38 +99,19 @@ def create_scene(width=64, height=64):
     creature_colors = CreatureColors(palette)
     canvas = make_canvas(group, width, height, palette)
 
-    # Starting fish as (species, position, size percent)
-    fish = [
-        (CATFISH, (12, 48), 100),
-        (STURGEON, (50, 12), 100),
-        (TURTLE, (48, 50), 90),
-        (KOI, (32, 32), 100),
-        (KOI, (16, 16), 50),
-        (KOI, (40, 40), 50),
-    ]
-    # One behavior per species present, built from its motion record, so
-    # species never flock together
-    behaviors = {}
-    for species, (x, y), size in fish:
-        behavior = behaviors.get(species)
-        if behavior is None:
-            motion = species.motion
-            if KOI_WANDER and species is KOI:
-                motion = KOI_WANDER_MOTION
-            behavior = behaviors[species] = motion.build(canvas, width, height)
-        # Until the genome (M9): a random variety and seed per fish
-        behavior.add(
-            [
-                SpineCreature(
-                    species,
-                    Vector(x, y),
-                    size,
-                    random_variety(species),
-                    random.getrandbits(16),
-                )
-            ]
-        )
-    species_behaviors = list(behaviors.values())
+    # The fish, one behavior per species present, so species never flock
+    # together
+    pond = Pond.from_dict(
+        store.section("pond") if store else None,
+        canvas,
+        width,
+        height,
+        {KOI: KOI_WANDER_MOTION} if KOI_WANDER else None,
+    )
+    if store:
+        store.provide("pond", pond.to_dict)
+        if pond.changed:
+            store.mark_dirty()
 
     # Background boid flocks, each starting in its own third of the tank. They
     # don't see each other, so they pass through one another as separate schools.
@@ -176,8 +155,7 @@ def create_scene(width=64, height=64):
         # behavior draws its creatures on top
         update_pond(dt)
         draw_pond(canvas)
-        for behavior in species_behaviors:
-            behavior.update(dt)
+        pond.update(dt)
         for flock in boid_flocks:
             flock.update(dt)
 

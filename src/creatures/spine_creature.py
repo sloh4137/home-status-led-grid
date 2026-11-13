@@ -45,7 +45,7 @@ class SpineCreature(CreatureSpine):
         super().__init__(
             origin,
             species.joints,
-            ceil(species.link * size / 100),
+            species.link * size / 100,
             species.angle_limit,
             color_index=variety.base,
         )
@@ -62,7 +62,10 @@ class SpineCreature(CreatureSpine):
         self.size = size
         species = self.species
         scale = size / 100
-        self.link_size = ceil(species.link * scale)
+        # Not rounded: a rounded-up link keeps small fish as long as larger
+        # ones (a koi's link is 2 px from size 30 to 50) while their width
+        # shrinks, which pulls the tail apart from the body
+        self.link_size = species.link * scale
         # Half-width of the body at each joint (parts attach to it)
         self.radii = [ceil(w * scale / 2) for w in species.widths]
         # A shared pre-drawn disc per joint, and the offset from the joint to
@@ -100,7 +103,7 @@ class SpineCreature(CreatureSpine):
             reach = max(reach, part.reach(self))
         # No joint is further than the spine's length from the head, plus room
         # for the body width and the parts around the joints
-        self.render_radius = (species.joints - 1) * self.link_size + ceil(
+        self.render_radius = ceil((species.joints - 1) * self.link_size) + ceil(
             max(max(species.widths) * scale, reach)
         )
 

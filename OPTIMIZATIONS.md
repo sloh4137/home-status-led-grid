@@ -612,3 +612,24 @@ Pond water background: 2.66 ms.
 - Shell sprite memory: **4208 bytes** for 16 sprites of 17 × 17 at size
   100 (the bench's size). At the pond's size 90 they're 15 × 15, a little
   less. Each size step rebuilds them, and the old set is freed.
+
+### M9: genomes and pond persistence
+
+The fish now come from the saved pond (`behaviors/lifecycle.py`), so sizes
+and varieties are each fish's own instead of the hard-coded M8 set. The
+board's pond for this run: koi chagoi 88, kohaku 75, showa 69 (M8: 100, 50,
+50), catfish 19 (age 5 h, still at the 30 % growth step; M8: 100), sturgeon
+105 (M8: 100) and turtle 74 (M8: 90). The koi also lost a joint (9 joints,
+widths `(6, 8, 8, 8, 7, 6, 5, 3, 2)`), which is one disc fewer per koi, and
+`link_size` is no longer rounded up. `DEBUG` stats over 5 lines:
+
+| Setup | FPS | Physics (ms) | Render (ms) | Net avg / max (ms) | Refresh (ms) |
+| ----- | --- | ------------ | ----------- | ------------------ | ------------ |
+| M8 (for comparison) | 10.0–10.7 | 37.4–40.3 | 36.9–41.8 | 0.2–2.2 / 9.2 | 15.4–16.2 |
+| M9: saved pond, 9-joint koi | 10.4–10.9 | 37.0–39.2 | 35.3–37.5 | 0.3–3.5 / 46.1 | 15.0–16.5 |
+
+- The same as M8 or a little better. The genome code only runs at startup
+  and at save time, so it adds nothing per frame. The small render gain
+  fits the koi's missing disc and the tiny catfish; with a different pond
+  the numbers will move by a fraction of a ms either way.
+- The 46 ms net maximums are HA polls, not M9.

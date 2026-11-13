@@ -44,9 +44,10 @@
 #
 # Buttons: UP / DOWN open the menu, a tap moves the highlight and holding
 # either for ~0.6 s selects. Items: ROTATE 90, SENSORS ON/OFF, DUMP STATE,
-# HIDE MENU. The rotation and SENSORS ON/OFF are saved to microcontroller.nvm
-# at most once per PERSIST_SECONDS, so a change made just before a power loss
-# is lost.
+# HIDE MENU. The rotation, SENSORS ON/OFF and the pond's fish (their
+# genomes: species, variety, spot seed, size, age) are saved to
+# microcontroller.nvm at most once per PERSIST_SECONDS, so a change made just
+# before a power loss is lost.
 #
 # Editing the state: at startup (and on DUMP STATE) the board prints its
 # state as JSON between ---STATE BEGIN--- / ---STATE END--- on the serial

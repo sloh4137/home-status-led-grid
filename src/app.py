@@ -20,6 +20,10 @@ are loaded and applied here, menu actions mark the store dirty, and
 item prints the document on the console, and a ``store.notice`` from loading
 (BAD STATE.JSON) replaces the sensor status line for NOTICE_SECONDS.
 
+The scene gets the store too (``create_scene(width, height, store)``), so it
+can read its own section of the loaded document, provide it at save time
+and mark the store dirty (the pond scene owns ``pond``).
+
 A scene's ``create_scene`` may return a third element, ``set_sensors(values)``.
 It gets the whole sensor values dict at startup, on every sensor swap and
 whenever ``sensors.changed``, so new sensor-driven effects need no wiring here.
@@ -56,7 +60,11 @@ class App:
         # Shown from the first tick on, so a slow WiFi connect doesn't eat it
         self._notice = store.notice if store else None
         self._notice_until = None
-        scene = scene_module.create_scene(width, height)
+        if store:
+            # Registered before the scene's sections, so settings come first
+            # in the saved document. Only called at save time.
+            store.provide("settings", self.settings)
+        scene = scene_module.create_scene(width, height, store)
         self.group, self._update_scene = scene[0], scene[1]
         # Optional third element: set_sensors(values), called with the whole
         # values dict whenever it changes. The scene decides what each value
@@ -72,8 +80,6 @@ class App:
         self._apply_rotation(saved["rotation"])
         self.sensors_on = saved["sensors_on"]
         self.sensor_panel.hidden = not self.sensors_on
-        if store:
-            store.provide("settings", self.settings)
 
         items = [
             (lambda: "ROTATE 90", self._rotate),

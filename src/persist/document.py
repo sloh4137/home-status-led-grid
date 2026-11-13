@@ -2,10 +2,12 @@
 
     {
       "v": 1,
-      "settings": {"rotation": 90, "sensors_on": true}
+      "settings": {"rotation": 90, "sensors_on": true},
+      "pond": {"next_id": 7, "fish": [{"id": 3, "species": "koi", ...}]}
     }
 
-Each section has an owner (App owns ``settings``; the pond will own ``pond``).
+Each section has an owner: App owns ``settings`` (validated here) and the
+pond scene owns ``pond`` (validated by creatures/genome.py).
 Loading puts the defaults first, then overlays each known field that is
 valid, so old saves keep working when fields are added. Unknown keys and
 invalid values are dropped, with the reason printed on the serial console.
@@ -20,7 +22,17 @@ import json
 VERSION = 1
 
 # Top-level sections, each replaced as a whole by an import
-SECTIONS = ("settings",)
+SECTIONS = ("settings", "pond")
+
+# Pretty dumps write known keys in this order, then any others.
+# MicroPython dicts don't keep insertion order, so without it the board's dump
+# would list each fish's keys in hash order.
+KEY_ORDER = (
+    "v", "settings", "pond",
+    "rotation", "sensors_on",
+    "next_id", "fish",
+    "id", "species", "variety", "seed", "max_size", "age_hours", "offspring",
+)
 
 ROTATIONS = (0, 90, 180, 270)
 DEFAULT_SETTINGS = {"rotation": 0, "sensors_on": True}
@@ -106,6 +118,26 @@ def dumps(doc, pretty=False):
     return json.dumps(doc)
 
 
+def _keys(d):
+    """d's keys, KEY_ORDER first."""
+    keys = [k for k in KEY_ORDER if k in d]
+    keys.extend(k for k in d if k not in KEY_ORDER)
+    return keys
+
+
+def _compact(value):
+    """One-line JSON with the keys in KEY_ORDER."""
+    if isinstance(value, dict):
+        return (
+            "{"
+            + ", ".join(json.dumps(k) + ": " + _compact(value[k]) for k in _keys(value))
+            + "}"
+        )
+    if isinstance(value, (list, tuple)):
+        return "[" + ", ".join(_compact(item) for item in value) + "]"
+    return json.dumps(value)
+
+
 def _pretty(value, indent):
     """Indented JSON. CircuitPython's json has no ``indent``, so this is done
     by hand. Objects open up one key per line; a list puts each item on its
@@ -113,11 +145,11 @@ def _pretty(value, indent):
     inner = indent + "  "
     if isinstance(value, dict) and value:
         items = [
-            inner + json.dumps(key) + ": " + _pretty(item, inner)
-            for key, item in value.items()
+            inner + json.dumps(key) + ": " + _pretty(value[key], inner)
+            for key in _keys(value)
         ]
         return "{\n" + ",\n".join(items) + "\n" + indent + "}"
     if isinstance(value, (list, tuple)) and value:
-        items = [inner + json.dumps(item) for item in value]
+        items = [inner + _compact(item) for item in value]
         return "[\n" + ",\n".join(items) + "\n" + indent + "]"
     return json.dumps(value)
