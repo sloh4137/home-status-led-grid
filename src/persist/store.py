@@ -137,15 +137,17 @@ class Store:
         t = time.monotonic_ns()
         doc = self.build_document()
         text = document.dumps(doc, self.backend.pretty)
+        built = time.monotonic_ns()
         try:
             self.backend.write(text)
         except (OSError, RuntimeError, ValueError) as e:
             print("state: save failed (%s)" % e)
             return
         self.dirty = False
+        done = time.monotonic_ns()
         print(
-            "state: saved %d bytes in %.1f ms"
-            % (len(text), (time.monotonic_ns() - t) / 1e6)
+            "state: saved %d bytes in %.1f ms (json %.1f, write %.1f)"
+            % (len(text), (done - t) / 1e6, (built - t) / 1e6, (done - built) / 1e6)
         )
 
 

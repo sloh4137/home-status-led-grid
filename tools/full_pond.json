@@ -1,0 +1,23 @@
+{
+  "v": 1,
+  "settings": {
+    "rotation": 0,
+    "sensors_on": true
+  },
+  "pond": {
+    "next_id": 12,
+    "fish": [
+      {"id": 1, "species": "koi", "variety": "kohaku", "seed": 1097, "max_size": 100, "age_hours": 60, "offspring": 0},
+      {"id": 2, "species": "koi", "variety": "sanke", "seed": 1194, "max_size": 100, "age_hours": 60, "offspring": 0},
+      {"id": 3, "species": "koi", "variety": "showa", "seed": 1291, "max_size": 100, "age_hours": 60, "offspring": 0},
+      {"id": 4, "species": "koi", "variety": "asagi", "seed": 1388, "max_size": 100, "age_hours": 60, "offspring": 0},
+      {"id": 5, "species": "koi", "variety": "shusui", "seed": 1485, "max_size": 100, "age_hours": 60, "offspring": 0},
+      {"id": 6, "species": "koi", "variety": "chagoi", "seed": 1582, "max_size": 100, "age_hours": 60, "offspring": 0},
+      {"id": 7, "species": "catfish", "variety": "plain", "seed": 1679, "max_size": 100, "age_hours": 80, "offspring": 0},
+      {"id": 8, "species": "catfish", "variety": "mottled", "seed": 1776, "max_size": 100, "age_hours": 80, "offspring": 0},
+      {"id": 9, "species": "sturgeon", "variety": "plain", "seed": 1873, "max_size": 100, "age_hours": 110, "offspring": 0},
+      {"id": 10, "species": "sturgeon", "variety": "plain", "seed": 1970, "max_size": 100, "age_hours": 110, "offspring": 0},
+      {"id": 11, "species": "turtle", "variety": "slider", "seed": 2067, "max_size": 90, "age_hours": 250, "offspring": 0}
+    ]
+  }
+}

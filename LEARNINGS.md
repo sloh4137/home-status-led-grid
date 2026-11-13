@@ -25,17 +25,38 @@ project on the MatrixPortal S3 with CircuitPython.
 
 ### Options in CircuitPython on the S3
 
-1. **`microcontroller.nvm`** (default choice): a small byte array that survives
+1. **`microcontroller.nvm`** (what we use): a small byte array that survives
    reloads, resets and power cycles, no remount needed. On the Espressif port it is
-   backed by ESP-IDF NVS, which wear-levels. Size is a few KB; check
-   `len(microcontroller.nvm)` on the board.
-   - Store fixed `struct.pack` records instead of JSON: magic, version, length,
-     payload, CRC. Unknown version or bad CRC → load defaults.
-   - Use two slots (A/B) with a sequence number: write the older slot, and on boot
-     load the valid slot with the higher sequence number. Survives power loss
-     mid-write.
-   - Fits settings, mode, brightness, a scene seed and per-creature genomes. Even
-     full boid state fits (100 boids × 4 float32 = 1.6 KB).
+   backed by ESP-IDF NVS, which wear-levels.
+   - A header record (magic, version, length, CRC) in front of a compact JSON
+     payload. Bad magic, version or CRC → load defaults. JSON instead of fixed
+     `struct.pack` fields keeps hand edits and schema changes easy, and at
+     ~120 bytes per fish it fits easily.
+   - Findings from `ports/espressif/common-hal/nvm/ByteArray.c` (CircuitPython
+     10.x):
+     - **Size: 8 KB** (`CIRCUITPY_INTERNAL_NVM_SIZE`), stored as one NVS blob in
+       the 20 KB `nvs` partition (5 pages of 4 KB).
+     - **Every slice write rewrites the whole blob**: it reads all 8 KB, calls
+       `nvs_erase_all()`, writes the full 8 KB back and commits. Every slice read
+       also fetches the whole blob. So write the record in one slice assignment,
+       and read it in as few slices as possible.
+     - **A/B slots can't help here.** Both slots live in the same blob, and the
+       old blob is erased *before* the new one is written. A power loss mid-save
+       leaves the old record, the new one, or no blob (reads as zeros, so bad
+       magic → defaults), never a mixed record that passes the CRC. Real A/B
+       would need two storage locations.
+     - **Wear**: each save is ~2 page erases spread over 5 pages, whatever the
+       payload size. One save a minute flat out would reach 100k cycles in about
+       170 days. Saving only when dirty (a few dozen saves a day for the pond's
+       hourly ages, births and deaths) makes it decades.
+     - **Save time is ~150 ms**, almost all of it the erase and the 8 KB rewrite,
+       so it barely depends on the payload: a visible hitch of a frame or two,
+       once per save. Another reason to keep dirty events rare. (Measured
+       with the settings-only document; the full-pond numbers go in
+       OPTIMIZATIONS.md "M11".)
+   - Fits settings and per-creature genomes with room to spare: a full pond (10
+     fish + the turtle) is ~1.4 KB of compact JSON. Even full boid state would fit
+     (100 boids × 4 float32 = 1.6 KB).
 2. **Writable CIRCUITPY**: `storage.remount("/", readonly=False)` in `boot.py`.
    The host then sees the drive read-only; both sides writing at once corrupts FAT.
    - Pick the mode at boot with a button (`board.BUTTON_UP` / `board.BUTTON_DOWN`),
@@ -44,6 +65,10 @@ project on the MatrixPortal S3 with CircuitPython.
    - Write `state.tmp`, then `os.rename()` it over the real file instead of
      truncating in place (FAT still isn't journaled).
    - Only worth it for larger or human-readable files.
+   - Not used: the drive stays writable by the PC, and the board only *reads* an
+     imported `CIRCUITPY/state.json` at startup (remembering its checksum, so
+     it's imported once). Edits go file → board; the current state goes board →
+     serial console → file.
 3. **MQTT retained messages**: publish state with `retain=True` and the broker
    hands it back on subscribe at boot. No flash wear, visible and editable from
    Home Assistant, survives reflashing. Depends on the network, so pair it with
@@ -54,8 +79,9 @@ project on the MatrixPortal S3 with CircuitPython.
 
 ### Patterns to copy
 
-- Dirty flag + throttled save (save at most every N seconds/minutes; save
-  immediately on significant events like a mode change). Flash wears out.
+- Dirty flag + throttled save (save at most every N seconds/minutes). Flash wears
+  out. We dropped the "save immediately on significant events" part: at ~150 ms
+  per nvm save, a burst of menu taps would stall the animation each time.
 - Defaults first, saved values overlaid; a version field for schema changes.
 - Persist what defines the scene (seed, creature genomes, settings), not every
   frame's positions, unless resuming mid-motion is actually wanted.
@@ -136,25 +162,35 @@ Method calls and allocations are what's expensive, not the class design itself
 per frame (`update → boundaryCheck → doMotion → sine helper → applyForce`, a new
 `PVector` per operation, one `display()` per part per segment).
 
-- [ ] **Split fish and boids completely.**
+- [x] **Split fish and boids completely.**
   - Creatures (few, ~5–20, e.g. koi): the shared class with parameter-driven
     motion, part variations, genome, lifecycle, persistence.
   - Boids (many): flat arrays and one loop for the whole behavior (as now), no
     per-boid objects in the hot path, ambient only (see Background boids).
-- [ ] **Variations as data, not subclasses.** One `Motion` with a parameter record
+  - Done: creatures are `SpineCreature`s with a genome; the boids stay flat
+    arrays in `FlockingBehavior`.
+- [x] **Variations as data, not subclasses.** One `Motion` with a parameter record
       (`side_amp`, `front_amp`, `freq`, `noise_amp`, `min_speed`, `max_speed`);
       an amplitude of 0 turns a term off. The record doubles as the motion part of
       the genome (mutation = nudging numbers, saving = `struct.pack`) and maps
       directly onto a C struct if physics ever moves to C.
-- [ ] **One `update()` call per creature per frame**, with the math inlined: copy
+  - Done as `Species` records (`creatures/species.py`) holding a `Flock` or
+    `Wander` motion record; a new species is one table entry. The motion
+    records aren't part of the genome: a fish inherits its species, variety
+    and size, not its speeds.
+- [x] **One `update()` call per creature per frame**, with the math inlined: copy
       settings into locals, accumulate plain `ax`/`ay` floats, no `Vector`
       allocations or `apply_force()` helpers. One call per creature per frame
       (even a virtual one) is negligible.
-- [ ] **Replace per-creature simplex noise**, which is costly in pure Python.
+  - Done: one behavior loop per species with plain-float steering, and a
+    float spine with one `set_state` per creature (M3.5).
+- [x] **Replace per-creature simplex noise**, which is costly in pure Python.
       Cheaper look-alikes: a small precomputed noise table sampled with linear
       interpolation, the sum of two sines at unrelated frequencies, or a slow
       random walk on a heading offset.
-- [ ] **Pre-drawn parts.** Fins, tails and heads are fixed shapes rotated to the
+  - Never needed: `Wander` steers toward a random target it picks every few
+    seconds, eased in, which reads as natural wandering.
+- [x] **Pre-drawn parts.** Fins, tails and heads are fixed shapes rotated to the
       joint angle, so render each at 8–16 angles into small bitmaps at startup
       and `bitmaptools.blit` the nearest one each frame (like `FishBoid`'s 8
       facing sprites).
@@ -165,9 +201,18 @@ per frame (`update → boundaryCheck → doMotion → sine helper → applyForce
   - Memory: 16 angles × a few parts × small bitmaps per creature is cheap at
     koi counts. Watch it if part sizes grow with age; pre-draw at a few size
     steps, not every size.
-- [ ] **Pick variations once, at construction**: store the variant's draw function
+  - Done differently: the body, fins, tail, spots and flippers are pre-drawn
+    *discs* (`graphics/stamps.py`) placed per frame. A disc looks the same at
+    every heading, so it needs no per-angle copies. Only the turtle's shell
+    is a sprite per heading (16, rebuilt per size step, ~4 KB), with its
+    marks baked in. Each blit costs ~0.1 ms on the board whatever its size,
+    so the item count matters more than the drawing method (OPTIMIZATIONS.md
+    "Render cost per item").
+- [x] **Pick variations once, at construction**: store the variant's draw function
       on the creature (e.g. `self.draw_fin = FINS[genome.fin]`), so a frame does
       one attribute lookup, not string compares or `if/elif` chains on type.
+  - Done: the variety record, the spots in pixels and the part states are
+    worked out in `set_size`, so a frame only reads them.
 
 ## Evolution
 
@@ -189,16 +234,25 @@ per frame (`update → boundaryCheck → doMotion → sine helper → applyForce
 
 ### Doing it for real
 
-- Keep a small, explicit genome: part types, palette start + step, stripe type,
-  segment count, size curve, sine amplitude/frequency, speed.
-- Offspring = copy of the parent's genome with small mutations: nudge hue
-  ±a few steps, occasionally swap one part type, ±1 segment, jitter
-  motion parameters within bounds.
-- Optional selection pressure from home status: e.g. health (from sensor/status
-  data) affects lifespan or reproduction chance, so the population drifts toward
-  traits that survive the house's conditions.
-- Persist genomes (plus age and offspring count) to nvm, not positions.
-- Make death actually remove the creature, and cap the population.
+- [x] Keep a small, explicit genome: part types, palette start + step, stripe type,
+      segment count, size curve, sine amplitude/frequency, speed.
+  - Done with fewer fields: id, species, variety, spot seed, max size, age and
+    offspring count (`creatures/genome.py`), all integers. Body shape, parts
+    and motion belong to the species and colors to the variety, so they
+    aren't per-fish genes.
+- [x] Offspring = copy of the parent's genome with small mutations: nudge hue
+      ±a few steps, occasionally swap one part type, ±1 segment, jitter
+      motion parameters within bounds.
+  - Done as: max size ±10 %, the same variety ~80 % of the time (15 % one of
+    the same family, 5 % any), a rare switch to another species, a new seed.
+- [ ] Optional selection pressure from home status: e.g. health (from sensor/status
+      data) affects lifespan or reproduction chance, so the population drifts toward
+      traits that survive the house's conditions.
+  - Not done: CO2 only dims the fish.
+- [x] Persist genomes (plus age and offspring count) to nvm, not positions.
+- [x] Make death actually remove the creature, and cap the population.
+  - At most `MAX_FISH` (10) plus the turtle, and per-species caps: with only
+    the total cap, a pond drifted to a single species within months.
 
 ## Background boids
 
