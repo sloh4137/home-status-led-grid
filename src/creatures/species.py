@@ -9,8 +9,12 @@ from math import pi
 
 from behaviors.flocking import Flock
 from behaviors.wander import Wander
-from creatures.parts import Fins, Tail
-from creatures.varieties import KOI_VARIETIES
+from creatures.parts import Fins, Snout, Tail, Whiskers
+from creatures.varieties import (
+    CATFISH_VARIETIES,
+    KOI_VARIETIES,
+    STURGEON_VARIETIES,
+)
 
 
 class Species:
@@ -79,13 +83,14 @@ KOI = Species(
     name="koi",
     joints=10,
     link=4,
-    widths=(8, 10, 10, 10, 9, 8, 6, 5, 3, 2),
+    # widths=(8, 10, 10, 10, 9, 8, 6, 5, 3, 2),
+    widths=(6, 8, 8, 8, 7, 6, 4, 3, 2, 2),
     angle_limit=pi / 8,
     varieties=KOI_VARIETIES,
     # Pectoral pair behind the head and a forked tail
     parts=(
-        Fins(joint=1, length=4),
-        Tail(length=5),
+        Fins(joint=1, length=3),
+        Tail(length=4),
     ),
     motion=Flock(
         outside_window_size=30,
@@ -107,6 +112,76 @@ KOI = Species(
     size_cap=110,
 )
 
+# Wider than the koi, with a broad flat head, stubby fins and a short tail,
+# and a pair of whiskers trailing from the mouth. Slow, with long pauses
+# on the bottom.
+CATFISH = Species(
+    name="catfish",
+    joints=9,
+    link=3,
+    widths=(9, 10, 10, 9, 7.5, 6, 4.5, 3, 1.5),
+    angle_limit=pi / 7,
+    varieties=CATFISH_VARIETIES,
+    parts=(
+        Fins(joint=1, length=1.5, sweep=70, width=1.5),
+        Tail(length=2.25, spread=30),
+        Whiskers(length=4.5),
+    ),
+    motion=Wander(
+        outside_window_size=20,
+        wall_avoid_distance=25,
+        avoidance_force=60.0,
+        min_speed=1.0,
+        max_speed=12.0,
+        cruise_speed=8.0,
+        max_turn=1.0,
+        retarget=(2.0, 5.0),
+        pause_chance=0.25,
+        # Follows the edges ~3/4 of the time (bouts of ~35 s), now and then
+        # crossing the pond
+        hug_distance=7,
+        hug_chance=0.3,
+        leave_chance=0.1,
+    ),
+    lifespan_days=10,
+    size_min=50,
+    size_cap=100,
+)
+
+# Long and narrow, with a pointed snout, long swept-back pectoral fins and a
+# long tail. Stiff (small angle_limit) and on a low turn rate, so it swims in
+# long, smooth curves.
+STURGEON = Species(
+    name="sturgeon",
+    joints=12,
+    link=3,
+    widths=(4, 5, 6, 6, 6, 5, 5, 4, 4, 3, 2, 2),
+    angle_limit=pi / 14,
+    varieties=STURGEON_VARIETIES,
+    parts=(
+        Fins(joint=2, length=7, sweep=45, width=2),
+        Fins(joint=7, length=3, sweep=40, width=2),
+        Tail(length=6, spread=25),
+        Snout(length=4),
+    ),
+    motion=Wander(
+        # Close walls: on its low turn rate it would otherwise sail far off
+        # screen before coming back
+        outside_window_size=45,
+        wall_avoid_distance=30,
+        avoidance_force=80.0,
+        min_speed=2.0,
+        max_speed=18.0,
+        cruise_speed=14.0,
+        max_turn=0.6,
+        retarget=(2.0, 6.0),
+        turn_ease=1.0,
+    ),
+    lifespan_days=14,
+    size_min=50,
+    size_cap=130,
+)
+
 # The koi on WanderBehavior instead, for comparison (pond.KOI_WANDER)
 KOI_WANDER = Wander(
     outside_window_size=30,
@@ -119,4 +194,4 @@ KOI_WANDER = Wander(
     retarget=(1.0, 4.0),
 )
 
-SPECIES_BY_NAME = {s.name: s for s in (KOI,)}
+SPECIES_BY_NAME = {s.name: s for s in (KOI, CATFISH, STURGEON)}

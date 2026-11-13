@@ -206,15 +206,15 @@ KOHAKU = Variety("kohaku", base=WHITE, fins=WHITE, layers=((RED, PATCHES),), fam
 **Zones** (`pattern.py`). Each is a small record: `count`, `radius`, `span` (where along the body, **percent of the body length**, 0 = head, 100 = tail tip), `t` (lateral range, −1..1), and `mode` (`scatter` = random, `line` = evenly spaced along the span).
 
 - The span is in percent, not joint indices, so the same zone fits a 10-joint koi, a 12-joint sturgeon and a 9-joint catfish. `make_spots` maps it to a joint plus the fraction `s` using the species' joint count. `line` mode spaces its spots by `count` over the span, not one per joint, so it also scales with the body.
-- The radius stays in base-body pixels and scales with size like everything else.
+- The radius is a percent of the species' widest half-width (changed in M7; it was base-body pixels), so narrowing a species shrinks its markings with it. It scales with size like everything else. A spot is capped at the body's width where it sits, so a big patch on the narrow tail can't spill out of the outline.
 
 | Zone | count | radius | span % | t | mode | Reads as |
 |---|---|---|---|---|---|---|
-| `PATCHES` | 2–4 | 2–3 | 0–75 | −1..1 | scatter | big blotches (kohaku red, utsuri patches) |
-| `SPECKS` | 2–5 | 1 | 20–75 | −1..1 | scatter | small accents, not on the head (sanke black) |
-| `HEAD` | 1 | 2 | 0 | 0 | scatter | single crown spot (tancho) |
-| `EDGES` | 7 per side | 1 | 10–75 | ±1, alternating | line | color along the sides (asagi/shusui red) |
-| `DORSAL` | 4 | 1 | 10–75 | 0 | line | row of scales down the back (shusui) |
+| `PATCHES` | 2–4 | 40–60 % | 0–75 | −1..1 | scatter | big blotches (kohaku red, utsuri patches) |
+| `SPECKS` | 2–5 | 20 % | 20–75 | −1..1 | scatter | small accents, not on the head (sanke black) |
+| `HEAD` | 1 | 40 % | 0 | 0 | scatter | single crown spot (tancho) |
+| `EDGES` | 7 per side | 20 % | 10–75 | ±1, alternating | line | color along the sides (asagi/shusui red) |
+| `DORSAL` | 4 | 20 % | 10–75 | 0 | line | row of scales down the back (shusui) |
 
 **The variety table.** This is all 7 colors (see Shared colors). Fin colors follow the real fish: white fins on the white-based varieties, red fins on asagi/shusui.
 
@@ -243,9 +243,9 @@ These reuse the shared zones where they fit and add a zone or two of their own. 
 | Species | Variety | Base | Layers | Notes |
 |---|---|---|---|---|
 | catfish | plain | bronze | — | the common one |
-| catfish | mottled | bronze | black `MOTTLE` (6–10 specks, r 1, 0–90 %) | a catfish-only zone: many small dark specks |
+| catfish | mottled | bronze | black `MOTTLE` (6–10 specks, r 15 %, 0–90 %) | a catfish-only zone: many small dark specks |
 | catfish | albino | white | — | rare (low weight) |
-| sturgeon | plain | slate | white `SCUTES` | a sturgeon-only zone: `line`, `t` = 0 and ±1, so the three rows of bony plates read as dotted stripes. Uses only existing modes |
+| sturgeon | plain | slate | white `SCUTES` | a sturgeon-only zone: `line`, `t` = 0 and ±1, radius 0 (1 px), so the three rows of bony plates read as dotted stripes. Uses only existing modes |
 | turtle | — | — | — | the shell is a sprite: its pattern lives in the shell zones, baked into the sprite (see Spots), and the body uses the plain base |
 
 - None of these need a new mode. A banded or striped species later (a "tiger" special fish) would add a `band` mode: one full-width bar across the body at a span, i.e. `t` covering −1..1 in one wide spot.
@@ -449,6 +449,18 @@ Example: a lightning fish that appears only while the washing machine is running
 
 **M7: Sturgeon + catfish.**
 - Add the `Snout` and `Whiskers` parts and their species entries. Each gets its own behavior with its own speed. Add their varieties (plain, mottled, albino catfish; sturgeon scutes) and any species-only zones. This should need no change to `make_spots`; if it does, note why.
+  - Done (desktop): `Snout` and `Whiskers` in `parts.py`, `CATFISH` and `STURGEON` in `species.py`, `CATFISH_VARIETIES` (plain 10, mottled 6, albino 1, one family) and `STURGEON_VARIETIES` (one variety, breeds true), and the `MOTTLE` and `SCUTES` zones. The pond starts with one of each next to the three koi.
+  - **No change to `make_spots`.** `SCUTES` uses `radius=0`, which `set_size` already draws as a single pixel at any size. With 2 px dots, the three rows run together on the 6 px sturgeon body.
+  - **Catfish**: 9 joints at `link=3`, widths `(9, 10, 10, 9, 7.5, 6, 4.5, 3, 1.5)` (the koi peaks at 8), stubby pectorals `Fins(joint=1, length=1.5, width=1.5)`, a short `Tail(length=2.25)` and `Whiskers(length=4.5)`. That's 75 % of the first version in every dimension, so it's shorter than a koi but wider. Fractional widths and lengths are fine: discs round to whole pixels, and `Whiskers` spreads a fractional length over whole links. `Wander` at cruise 8 / max 12 px/s (koi 20 / 25), `max_turn` 1.0, `pause_chance` 0.25.
+  - **Edge hugging** (`WanderBehavior` options, off by default): `hug_distance=7`, `hug_chance=0.3`, `leave_chance=0.1`. A hugging catfish steers toward the nearest screen edge's tangent, tilted in or out by its distance error, with the random turn kept as a small wobble. At each retarget a roaming one starts hugging with `hug_chance` and a hugging one leaves with `leave_chance`, so it spends ~3/4 of its time on the edges in ~35 s bouts and now and then crosses the pond. 
+    - Head-on into an edge, "the tangent it's already going along" is a tie, which sent it back into the corner. Within 60° of the normal it now takes the tangent toward the middle of the tank.
+    - Going briefly off screen is fine (the fish should show up some of the time, not stay on screen), so there's nothing more to keep it in. A look-ahead point for the corners raised on-screen time from 91 % to 98 % and was dropped as not worth the code. It still cuts the odd corner a little off screen.
+  - **Sturgeon**: 12 joints at `link=3`, widths ≤ 6, `angle_limit` π/14, long pectorals `Fins(joint=2, length=7, sweep=45)`, a small pelvic pair, `Tail(length=6, spread=25)` and `Snout(length=4)`. `Wander` at cruise 14, `max_turn` 0.6, `turn_ease` 1.0. On that turn rate it spent a third of its time off screen with the koi's 30 px wall margin; `outside_window_size=15` brings that to ~5 %.
+  - `Fins` adds a disc per 2 px of length and starts a long fin at most 2 px out, so the sturgeon's fins don't break into dots. The koi's length-4 fins are unchanged. `BlobPart.slot(creature)` picks the disc color (fin color by default); `Snout` uses the body color.
+  - `Whiskers(length, spread=95, forward=0.5, out=0.8, stiffness=0.6)`: one mirrored pair of 1 px link chains rooted at the mouth corners, drawn as single pixels over the body. Each link blends the direction it trails with a rest direction by `stiffness`, so they settle swept out and slightly back, drag back while swimming and swing out on turns. The chain moves in `render` (a part's only per-frame hook), so an off-screen catfish keeps a stale shape. Every link is re-placed exactly one link from the one before, so the chain swings back without stretching.
+  - **Spot radii are now relative to the body**: a percent of the species' widest half-width instead of pixels, capped at the local body width. The koi's widths went from max 10 to max 8, and its fixed-pixel patches (up to 6 px) covered the body and spilled past it at the tail. The presets are the old values on the 10 px koi (`PATCHES` 40–60 %, `SPECKS` / `EDGES` / `DORSAL` 20 %, `HEAD` 40 %), so a 10 px body looks as before; `MOTTLE` is 15 %. Seeds give the same placements, since `make_spots` draws the same number of values. On the 8 px koi, 20 % still rounds to 2 px, so asagi and shusui are a little busier.
+  - Desktop render per fish (20 on screen, Blinka): koi 0.83 ms, catfish 1.03 ms (14 whisker pixels written from Python), sturgeon 0.43 ms. A 3000-frame headless pond soak runs clean.
+  - Board: 10.8–11.3 fps, physics 36.3–37.2 ms, render 33.0–37.1 ms, against M6's 12.9–14.4 fps and 20.2–24.0 ms render (OPTIMIZATIONS.md "M7"). About 2.5 fps below M6; the cheapest cuts are listed there for M11.
 - *Check:* both are recognisable at 64×64, the whiskers trail on turns, and the fps stays near the M6 value.
 
 **M8: Turtle.**

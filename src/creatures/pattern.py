@@ -25,8 +25,10 @@ class Zone:
     A placement rule.
 
     - count: spots, an int or an inclusive (lo, hi) range. For LINE, per row.
-    - radius: spot radius in base-body pixels, an int or (lo, hi). It scales
-      with the fish's size.
+    - radius: spot radius in percent of the species' widest half-width, an
+      int or (lo, hi), so the markings follow the body when its widths
+      change, and scale with the fish's size. 0 is a single pixel at any
+      size. A spot is never drawn wider than the body where it sits.
     - span: (lo, hi) percent of the body length, 0 = head, 100 = tail tip.
       Percent rather than joints, so a zone fits any joint count.
     - t: lateral position, percent of the half-width, -100..100 (the spot
@@ -52,11 +54,20 @@ def _range(v):
 
 
 # Shared presets (see the plan's zone table). A species may add its own.
-PATCHES = Zone(count=(2, 4), radius=(2, 3), span=(0, 75), t=(-100, 100))
-SPECKS = Zone(count=(2, 5), radius=1, span=(20, 75), t=(-100, 100))
-HEAD = Zone(count=1, radius=2, span=(0, 0), t=(0, 0))
-EDGES = Zone(count=7, radius=1, span=(10, 75), t=(-100, 100), mode=LINE, stagger=True)
-DORSAL = Zone(count=4, radius=1, span=(10, 75), t=(0,), mode=LINE)
+# Radii were tuned on a 10 px wide koi (half-width 5), where 20 % is 1 px.
+PATCHES = Zone(count=(2, 4), radius=(40, 60), span=(0, 75), t=(-100, 100))
+SPECKS = Zone(count=(2, 5), radius=20, span=(20, 75), t=(-100, 100))
+HEAD = Zone(count=1, radius=40, span=(0, 0), t=(0, 0))
+EDGES = Zone(count=7, radius=20, span=(10, 75), t=(-100, 100), mode=LINE, stagger=True)
+DORSAL = Zone(count=4, radius=20, span=(10, 75), t=(0,), mode=LINE)
+
+# Species-only zones
+# Catfish: many small dark specks over the whole body
+MOTTLE = Zone(count=(6, 10), radius=15, span=(0, 90), t=(-100, 100))
+# Sturgeon: the three rows of bony plates (back and both sides) as dotted
+# stripes. Radius 0 is a single pixel at any size, so the rows stay apart
+# on the narrow body.
+SCUTES = Zone(count=7, radius=0, span=(5, 85), t=(-100, 0, 100), mode=LINE)
 
 
 class XorShift:
@@ -105,7 +116,7 @@ def make_spots(species, variety, seed):
     The variety's spots for this seed, in body coordinates:
     [(joint, s, t, radius, slot)], all ints. s is 0-100 percent of the way from
     joint to the next one, t is -100..100 percent of the half-width, and the
-    radius is in base-body pixels. Layer 1 comes first, so layer 2 is drawn on
+    radius is in percent of the widest half-width. Layer 1 comes first, so layer 2 is drawn on
     top of it.
     """
     rng = XorShift(seed)

@@ -491,3 +491,27 @@ varieties, `DEBUG` stats over 5 lines:
 - Cost depends on the variety mix. If a pond of 20 (M11) turns out
   render-bound, the cheapest cut is `EDGES` at 5 per side instead of 7
   (−4 blits per asagi/shusui).
+
+### M7: catfish + sturgeon
+
+The pond gains one catfish and one sturgeon next to the 3 koi (now on the
+narrower 8 px body). Per frame the sturgeon blits 12 body discs, 12 fin and
+6 tail discs, 3 snout discs and 20 one-pixel scutes; the catfish 9 body
+discs (plus tail fills), 4 fin and 6 tail discs and 0–10 mottle spots, then
+writes its 2 × 5 whisker pixels from Python after a follow-the-leader step
+per link. Both are on `WanderBehavior` (catfish edge hugging included).
+`DEBUG` stats over 4 lines:
+
+| Setup | FPS | Physics (ms) | Render (ms) | Net avg / max (ms) | Refresh (ms) |
+| ----- | --- | ------------ | ----------- | ------------------ | ------------ |
+| M6 (for comparison) | 12.9–14.4 | 31.8–34.9 | 20.2–24.0 | 0.2–2.3 / 8.9 | 15.0–16.4 |
+| M7: + catfish + sturgeon | 10.8–11.3 | 36.3–37.2 | 33.0–37.1 | 0.7–1.9 / 9.2 | 15.5–16.8 |
+
+- Render is up ~13 ms for the two new fish, about 80 extra blits at the
+  ~0.1–0.15 ms each seen in M5.5/M6, plus the whiskers. Physics is up
+  ~3 ms for two more spines (the sturgeon's has 12 joints) and the wander
+  steering.
+- FPS drops ~2.5 below M6, more than "near M6". Cheapest cuts, if a full
+  pond (M11) needs them: the sturgeon's 20 scutes as direct `bitmap[x, y]`
+  writes instead of 1 px blits, or fewer scutes per row (7 → 5, −6); its
+  long pectorals at 3 discs instead of 4 per side (−2).

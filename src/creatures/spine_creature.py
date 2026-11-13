@@ -101,16 +101,21 @@ class SpineCreature(CreatureSpine):
         """
         The spots at this size, as (joint, s, offset, o, disc): s is 0..1
         toward the next joint, offset the pixels out along the normal, and o
-        the shift from the centre to the disc's corner. The offset is
+        the shift from the centre to the disc's corner. A disc is at most as
+        wide as the body where it sits, and the offset is
         t * (half-width - radius), so even t = +-100 keeps the disc inside the
         outline and render never clips against the body.
         """
         widths = self.species.widths
+        # The radius is percent of the widest half-width: 2 * r/100 * w/2
+        widest = max(widths) * scale / 100
         out = []
         for joint, s, t, radius, slot in self.spots:
             f = s / 100
             half = (widths[joint] * (1 - f) + widths[joint + 1] * f) * scale / 2
-            d = max(1, round(2 * radius * scale))
+            # Never wider than the body here, so a big patch on the narrow
+            # tail doesn't spill out of the outline
+            d = max(1, min(round(radius * widest), round(2 * half)))
             offset = t / 100 * max(0, half - d / 2)
             out.append((joint, f, offset, d / 2 - 0.5, stamps.disc(d, slot)))
         return tuple(out)

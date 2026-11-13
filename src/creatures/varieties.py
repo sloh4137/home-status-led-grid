@@ -3,7 +3,7 @@ Color varieties: a base color, a fin color, and up to two marking layers, each
 a (slot, zone) pair placed by creatures/pattern.py. A variety is pure data, so
 a new one is one line in a species' tuple.
 
-Each species has its own tuple (KOI_VARIETIES, later CATFISH_VARIETIES...).
+Each species has its own tuple (KOI_VARIETIES, CATFISH_VARIETIES...).
 Families and rarity weights only matter inside that tuple, so names only need
 to be unique within a species.
 """
@@ -11,7 +11,7 @@ to be unique within a species.
 import random
 
 from creatures.colors import BLACK, BRONZE, GOLD, RED, SLATE, WHITE
-from creatures.pattern import DORSAL, EDGES, HEAD, PATCHES, SPECKS
+from creatures.pattern import DORSAL, EDGES, HEAD, MOTTLE, PATCHES, SCUTES, SPECKS
 
 
 class Variety:
@@ -54,6 +54,17 @@ KOI_VARIETIES = (
     Variety("platinum ogon", WHITE, WHITE, (), "metallic", 3),
     Variety("chagoi", BRONZE, BRONZE, (), "solid", 3),
 )
+
+# Catfish: plain is the common one, albino rare. One family, so a catfish
+# breeds mostly true and now and then into another.
+CATFISH_VARIETIES = (
+    Variety("plain", BRONZE, BRONZE, (), "catfish", 10),
+    Variety("mottled", BRONZE, BRONZE, ((BLACK, MOTTLE),), "catfish", 6),
+    Variety("albino", WHITE, WHITE, (), "catfish", 1),
+)
+
+# Sturgeon: slate with the white rows of scutes. A single variety breeds true.
+STURGEON_VARIETIES = (Variety("plain", SLATE, SLATE, ((WHITE, SCUTES),)),)
 
 # inherit_variety tiers, in percent (tuned in M10)
 SAME = 80
