@@ -121,7 +121,7 @@ TURTLE_VARIETIES = (
     Variety("albino", WHITE, WHITE, weight=1, shell=ShellLook(GOLD, BRONZE)),
 )
 
-# inherit_variety tiers, in percent (tuned in M10)
+# inherit_variety tiers, in percent
 SAME = 80
 FAMILY = 15
 NEW = 5
@@ -155,23 +155,24 @@ def random_variety(species):
 
 def inherit_variety(species, parent):
     """
-    A child's variety from its parent's (a Variety of the same species):
-    SAME % the parent's, FAMILY % another of its family by weight, NEW % any
-    of the species by weight (which may roll the parent's again). A family
-    of one, or no family, falls through FAMILY to SAME.
+    A child's variety from its parent's (a Variety of the same species), as
+    (variety, tier): SAME % the parent's ("same"), FAMILY % another of its
+    family by weight ("family"), NEW % any of the species by weight, which
+    may roll the parent's again ("new"). A family of one, or no family,
+    falls through FAMILY to SAME.
     """
     roll = random.randrange(100)
     if roll < SAME:
-        return parent
+        return parent, "same"
     if roll < SAME + FAMILY:
         if parent.family is None:
-            return parent
+            return parent, "same"
         family = [
             v
             for v in species.varieties
             if v.family == parent.family and v is not parent
         ]
         if not family:
-            return parent
-        return weighted_variety(family)
-    return random_variety(species)
+            return parent, "same"
+        return weighted_variety(family), "family"
+    return random_variety(species), "new"

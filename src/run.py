@@ -109,7 +109,15 @@ def main(argv=None):
 
     store = Store(FileBackend(args.state), persist_seconds(settings), now)
     app = App(
-        args.width, args.height, scene, sensors, now, buttons, set_rotation, store
+        args.width,
+        args.height,
+        scene,
+        sensors,
+        now,
+        buttons,
+        set_rotation,
+        store,
+        settings,
     )
     display.show(app.group)
     sensor_key = getattr(sensors, "key", None)

@@ -184,7 +184,7 @@ def make_water_background(width, height):
     return dio.TileGrid(bmp, pixel_shader=pal)
 
 
-def create_scene(width=64, height=64, store=None):
+def create_scene(width=64, height=64, store=None, config=None):
     """Build the scene. Returns (group, update(dt)) for the main loop."""
     group = dio.Group()
     group.append(make_water_background(width, height))

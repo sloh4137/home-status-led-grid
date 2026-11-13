@@ -20,9 +20,11 @@ are loaded and applied here, menu actions mark the store dirty, and
 item prints the document on the console, and a ``store.notice`` from loading
 (BAD STATE.JSON) replaces the sensor status line for NOTICE_SECONDS.
 
-The scene gets the store too (``create_scene(width, height, store)``), so it
-can read its own section of the loaded document, provide it at save time
-and mark the store dirty (the pond scene owns ``pond``).
+The scene gets the store too (``create_scene(width, height, store, config)``),
+so it can read its own section of the loaded document, provide it at save
+time and mark the store dirty (the pond scene owns ``pond``). ``config`` is
+the settings.toml lookup (config.Settings, optional), for scene keys like
+POND_TIME_SCALE.
 
 A scene's ``create_scene`` may return a third element, ``set_sensors(values)``.
 It gets the whole sensor values dict at startup, on every sensor swap and
@@ -50,6 +52,7 @@ class App:
         buttons=None,
         set_rotation=None,
         store=None,
+        config=None,
     ):
         self.width = width
         self.height = height
@@ -64,7 +67,7 @@ class App:
             # Registered before the scene's sections, so settings come first
             # in the saved document. Only called at save time.
             store.provide("settings", self.settings)
-        scene = scene_module.create_scene(width, height, store)
+        scene = scene_module.create_scene(width, height, store, config)
         self.group, self._update_scene = scene[0], scene[1]
         # Optional third element: set_sensors(values), called with the whole
         # values dict whenever it changes. The scene decides what each value

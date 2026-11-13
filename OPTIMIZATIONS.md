@@ -633,3 +633,20 @@ widths `(6, 8, 8, 8, 7, 6, 5, 3, 2)`), which is one disc fewer per koi, and
   fits the koi's missing disc and the tiny catfish; with a different pond
   the numbers will move by a fraction of a ms either way.
 - The 46 ms net maximums are HA polls, not M9.
+
+### M10: lifecycle + reproduction
+
+The lifecycle (`behaviors/lifecycle.py`) checks the pond once per real
+second, and at `POND_TIME_SCALE` 1 it only does work when a pond hour has
+passed, so it should add nothing per frame. Same pond size as M9 (the
+board's saved pond, no full 10-fish pond yet; that's M11). `DEBUG` stats
+over 3 lines:
+
+| Setup | FPS | Physics (ms) | Render (ms) | Net avg / max (ms) | Refresh (ms) |
+| ----- | --- | ------------ | ----------- | ------------------ | ------------ |
+| M9 (for comparison) | 10.4–10.9 | 37.0–39.2 | 35.3–37.5 | 0.3–3.5 / 46.1 | 15.0–16.5 |
+| M10: lifecycle on, scale 1 | 10.4–10.7 | 37.6–40.7 | 34.0–40.0 | 0.2–2.2 / 38.6 | 15.0–16.5 |
+
+- Within noise of M9. The once-per-second check is a float add and a
+  compare; aging, breeding and growth only run once per pond hour.
+- The 38.6 ms net maximum is an HA poll, not M10.

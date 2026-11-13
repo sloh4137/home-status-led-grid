@@ -33,11 +33,18 @@ class Species:
       attach(creature) -> state and render(state, creature, bitmap).
     - motion: a Flock or Wander record. The pond builds one behavior per
       species from it.
-    - lifespan_days, size_min, size_cap, offspring_odds: the lifecycle (M9,
-      M10). Sizes are percent of the base body.
+    - lifespan_days, size_min, size_cap: the lifecycle (behaviors/
+      lifecycle.py). Sizes are percent of the base body.
+    - growth_start: percent of its max size a fish is born at
+      (creatures/genome.py growth).
+    - offspring_odds: ((species name, weight), ...) a child's species is
+      picked from. Empty breeds true.
+    - max_count: at most this many of the species in the pond (None: only
+      MAX_FISH limits it). Without it, a pond of 10 drifts to a single
+      species within a few months.
     - lifecycle, persist: False for special fish that don't age or breed and
       aren't saved.
-    - solo: exactly one at a time (the turtle). The lifecycle (M10) keeps it
+    - solo: exactly one at a time (the turtle). The lifecycle keeps it
       outside MAX_FISH, never breeds it, and replaces it with an egg when it
       dies. A solo species is never in anyone's offspring_odds.
     """
@@ -55,7 +62,9 @@ class Species:
         lifespan_days=7,
         size_min=50,
         size_cap=100,
+        growth_start=30,
         offspring_odds=(),
+        max_count=None,
         lifecycle=True,
         persist=True,
         solo=False,
@@ -77,7 +86,9 @@ class Species:
         self.lifespan_days = lifespan_days
         self.size_min = size_min
         self.size_cap = size_cap
+        self.growth_start = growth_start
         self.offspring_odds = offspring_odds
+        self.max_count = max_count
         self.lifecycle = lifecycle
         self.persist = persist
         self.solo = solo
@@ -117,6 +128,8 @@ KOI = Species(
     lifespan_days=7,
     size_min=50,
     size_cap=110,
+    offspring_odds=(("koi", 95), ("catfish", 3), ("sturgeon", 2)),
+    max_count=6,
 )
 
 # Wider than the koi, with a broad flat head, stubby fins and a short tail,
@@ -153,6 +166,8 @@ CATFISH = Species(
     lifespan_days=10,
     size_min=50,
     size_cap=100,
+    offspring_odds=(("catfish", 95), ("koi", 5)),
+    max_count=2,
 )
 
 # Long and narrow, with a pointed snout, long swept-back pectoral fins and a
@@ -187,6 +202,8 @@ STURGEON = Species(
     lifespan_days=14,
     size_min=50,
     size_cap=130,
+    offspring_odds=(("sturgeon", 95), ("koi", 5)),
+    max_count=2,
 )
 
 # A small head, the shell over the middle joint and a stub of a tail, with
@@ -221,6 +238,8 @@ TURTLE = Species(
     lifespan_days=30,
     size_min=60,
     size_cap=90,
+    # Hatches at 60 %: smaller, it's a speck with a rim
+    growth_start=60,
     solo=True,
 )
 

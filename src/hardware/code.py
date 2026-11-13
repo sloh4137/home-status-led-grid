@@ -140,6 +140,7 @@ app = App(
     KeypadButtons(),
     set_rotation,
     store,
+    settings,
 )
 display.root_group = app.group
 display.refresh()  # show WIFI... while connecting, which can take seconds

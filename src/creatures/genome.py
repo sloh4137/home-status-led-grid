@@ -10,28 +10,43 @@ Numbers are integers only: hand edits stay simple and dumps exact
 (CircuitPython floats are 32-bit, so 0.92 could dump as 0.9200001). Species
 and variety are stored by name, so their tables can be reordered.
 
+An egg is a genome of a solo species (the turtle) with a negative
+``age_hours``: it counts up to 0 and hatches (behaviors/lifecycle.py).
+
 Loading (``load``) validates each fish against the species table: a fish
 with an unknown or missing species, or a duplicate id, is dropped; a bad or
 missing field gets a default (a random variety or seed, a random size in
 the species' range, age 0) or is clamped into range. Every drop, default
 and clamp is printed on the serial console with the reason, and reported as
-``repaired`` so the caller saves the fixed pond.
+``repaired`` so the caller saves the fixed pond. The loader also keeps
+exactly one fish or egg of each solo species, adding an egg if there's none.
 """
 
 import random
 
-from creatures.species import SPECIES_BY_NAME
-from creatures.varieties import find_variety, random_variety
+from creatures.species import SPECIES, SPECIES_BY_NAME
+from creatures.varieties import find_variety, inherit_variety, random_variety
 
 SEED_MAX = 0xFFFF
 MAX_OFFSPRING = 2
 
-# Growth: a fish is born at GROWTH_START percent of its max size and reaches
-# 100 % at GROWTH_DONE percent of its lifespan. The size changes in steps of
-# GROWTH_STEP percent, so the body is only rebuilt a handful of times.
-GROWTH_START = 30
+# Growth: a fish is born at species.growth_start percent of its max size
+# (default 30) and reaches 100 % at GROWTH_DONE percent of its lifespan. The
+# size changes in steps of GROWTH_STEP percent, so the body is only rebuilt a
+# handful of times.
 GROWTH_DONE = 30
 GROWTH_STEP = 10
+
+# A fish dies at its lifespan +- DEATH_SPREAD percent, fixed per fish by its
+# seed, so a restart doesn't reroll it
+DEATH_SPREAD = 10
+
+# Child max_size: the parent's times CHILD_SIZE_LO..CHILD_SIZE_HI percent
+CHILD_SIZE_LO = 90
+CHILD_SIZE_HI = 110
+
+# Pond hours a solo species' egg takes to hatch
+EGG_HOURS = 12
 
 FIELDS = ("id", "species", "variety", "seed", "max_size", "age_hours", "offspring")
 
@@ -57,9 +72,22 @@ class Genome:
     def variety_record(self):
         return find_variety(self.species_record(), self.variety)
 
+    def is_egg(self):
+        return self.age_hours < 0
+
     def growth(self):
         """Percent of max_size grown so far, in GROWTH_STEP steps."""
-        return growth(self.age_hours, self.species_record().lifespan_days)
+        species = self.species_record()
+        return growth(self.age_hours, species.lifespan_days, species.growth_start)
+
+    def lifespan_hours(self):
+        return self.species_record().lifespan_days * 24
+
+    def death_hours(self):
+        """The age this fish dies at: its lifespan +- DEATH_SPREAD percent,
+        picked by the seed."""
+        pct = 100 - DEATH_SPREAD + self.seed % (2 * DEATH_SPREAD + 1)
+        return self.lifespan_hours() * pct // 100
 
     def size(self):
         """The current body size, percent of the species' base body."""
@@ -77,19 +105,19 @@ class Genome:
         }
 
 
-def growth(age_hours, lifespan_days):
+def growth(age_hours, lifespan_days, start=30):
     """
-    GROWTH_START percent at birth, rising linearly to 100 at GROWTH_DONE
-    percent of the lifespan, then holding; rounded down to a GROWTH_STEP.
-    Integer math, so both platforms give the same steps.
+    start percent at birth, rising linearly to 100 at GROWTH_DONE percent of
+    the lifespan, then holding; rounded down to a GROWTH_STEP (never below
+    start). Integer math, so both platforms give the same steps.
     """
     if age_hours <= 0:
-        return GROWTH_START
+        return start
     grown_hours = lifespan_days * 24 * GROWTH_DONE
-    g = GROWTH_START + (100 - GROWTH_START) * age_hours * 100 // grown_hours
+    g = start + (100 - start) * age_hours * 100 // grown_hours
     if g >= 100:
         return 100
-    return g - g % GROWTH_STEP
+    return max(start, g - g % GROWTH_STEP)
 
 
 def random_genome(species, id, age_hours=0):
@@ -104,6 +132,57 @@ def random_genome(species, id, age_hours=0):
         age_hours,
         0,
     )
+
+
+def egg(species, id):
+    """A solo species' egg: EGG_HOURS from hatching. Its variety, seed and
+    size are placeholders, since the hatchling gets new random ones."""
+    return random_genome(species, id, -EGG_HOURS)
+
+
+def weighted_pick(odds):
+    """A species from ((name, weight), ...), or None for no odds."""
+    total = 0
+    for _, weight in odds:
+        total += weight
+    if not total:
+        return None
+    roll = random.randrange(total)
+    for name, weight in odds:
+        roll -= weight
+        if roll < 0:
+            return SPECIES_BY_NAME[name]
+    return None
+
+
+def make_offspring(parent, id, full=()):
+    """
+    A child of parent: (genome, tier), or None. The species is picked from
+    the parent species' offspring_odds (its own when it has none). A pick in
+    ``full`` (species at their max_count) falls back to the parent's
+    species, and if that's full too there's no child. The same
+    species inherits the variety through inherit_variety's tiers; another
+    species gets a random variety (tier "species"). The max size is the
+    parent's +- 10 %, clamped into the child species' range. Always a new
+    seed, so new spots.
+    """
+    parent_species = parent.species_record()
+    species = weighted_pick(parent_species.offspring_odds) or parent_species
+    if species in full:
+        species = parent_species
+    if species in full:
+        return None
+    if species is parent_species:
+        variety, tier = inherit_variety(species, parent.variety_record())
+    else:
+        variety, tier = random_variety(species), "species"
+    # Rounded, not floored: flooring shrinks the line a little each generation
+    max_size = (parent.max_size * random.randint(CHILD_SIZE_LO, CHILD_SIZE_HI) + 50) // 100
+    max_size = max(species.size_min, min(species.size_cap, max_size))
+    child = Genome(
+        id, species.name, variety.name, random.getrandbits(16), max_size, 0, 0
+    )
+    return child, tier
 
 
 # ---------------------------------------------------------------- loading
@@ -172,6 +251,28 @@ def load(section):
         next_id += 1
         _note(where, "no id, given %d" % genome.id)
         genomes.append(genome)
+
+    # Exactly one fish or egg per solo species: keep the first, and lay an
+    # egg if there's none
+    kept = []
+    seen = set()
+    for genome in genomes:
+        species = genome.species_record()
+        if species.solo:
+            if species in seen:
+                _note("pond", "dropped %s %d (only one %s or egg at a time)"
+                      % (genome.species, genome.id, genome.species))
+                repaired = True
+                continue
+            seen.add(species)
+        kept.append(genome)
+    genomes = kept
+    for species in SPECIES:
+        if species.solo and species.persist and species not in seen:
+            _note("pond", "no %s, adding an egg (id %d)" % (species.name, next_id))
+            genomes.append(egg(species, next_id))
+            next_id += 1
+            repaired = True
     return genomes, next_id, repaired
 
 
@@ -234,9 +335,12 @@ def _load_fish(d, where):
         max_size = clamped
         fixed = True
 
+    # A negative age is an egg, which only a solo species lays
     age = d.get("age_hours")
-    if not (_is_int(age) and age >= 0):
-        age = bad("age_hours", "must be an integer >= 0", 0)
+    if not _is_int(age):
+        age = bad("age_hours", "not an integer", 0)
+    elif age < 0 and not species.solo:
+        age = bad("age_hours", "only a solo species has eggs", 0)
 
     offspring = d.get("offspring")
     if not (_is_int(offspring) and 0 <= offspring <= MAX_OFFSPRING):

@@ -4,6 +4,7 @@
     settings.get("HA_URL")             # None when missing
     poll_seconds(settings)             # HA_POLL_SECONDS, clamped to 1..60
     persist_seconds(settings)          # PERSIST_SECONDS, clamped to 10..3600
+    pond_time_scale(settings)          # POND_TIME_SCALE, clamped to 1..86400
 
 On CircuitPython the board's CIRCUITPY/settings.toml is read through
 os.getenv() and ``path`` is ignored. On CPython the file at ``path`` is
@@ -20,6 +21,9 @@ POLL_MAX = 60
 PERSIST_DEFAULT = 60
 PERSIST_MIN = 10
 PERSIST_MAX = 3600
+TIME_SCALE_DEFAULT = 1
+TIME_SCALE_MIN = 1
+TIME_SCALE_MAX = 86400  # a pond day per second
 
 
 class Settings:
@@ -68,4 +72,12 @@ def persist_seconds(settings):
     """PERSIST_SECONDS: minimum seconds between state saves, clamped to 10..3600."""
     return clamped_int(
         settings, "PERSIST_SECONDS", PERSIST_DEFAULT, PERSIST_MIN, PERSIST_MAX
+    )
+
+
+def pond_time_scale(settings):
+    """POND_TIME_SCALE: debug multiplier for the pond's aging clock, clamped
+    to 1..86400 (3600 is a pond hour per second)."""
+    return clamped_int(
+        settings, "POND_TIME_SCALE", TIME_SCALE_DEFAULT, TIME_SCALE_MIN, TIME_SCALE_MAX
     )

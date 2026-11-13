@@ -3,6 +3,7 @@ Scene with procedural generated fish
 """
 
 from _dio import dio
+from config import pond_time_scale
 from creatures import colors
 from creatures.colors import CreatureColors
 from creatures.fish_boid import FishBoid
@@ -82,7 +83,7 @@ def load_pond_water(width, height):
     return palette, update, draw
 
 
-def create_scene(width=64, height=64, store=None):
+def create_scene(width=64, height=64, store=None, config=None):
     """
     Build the scene. Returns (group, update(dt), set_sensors(values)) for the
     main loop. set_sensors gets the whole sensor values dict whenever it
@@ -91,7 +92,9 @@ def create_scene(width=64, height=64, store=None):
     The fish come from the store's ``pond`` section (behaviors/lifecycle.py),
     or a fresh pond without one; the store then saves the pond with the rest
     of the document. A fresh or repaired pond marks the store dirty, so the
-    fixed version is what gets saved.
+    fixed version is what gets saved, and so does every change the lifecycle
+    makes (aging, births, deaths). config (settings.toml) gives
+    POND_TIME_SCALE.
     """
 
     group = dio.Group()
@@ -107,7 +110,11 @@ def create_scene(width=64, height=64, store=None):
         width,
         height,
         {KOI: KOI_WANDER_MOTION} if KOI_WANDER else None,
+        time_scale=pond_time_scale(config) if config else 1,
+        on_change=store.mark_dirty if store else None,
     )
+    if pond.time_scale != 1:
+        print("pond: time x%d" % pond.time_scale)
     if store:
         store.provide("pond", pond.to_dict)
         if pond.changed:
