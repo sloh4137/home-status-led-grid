@@ -71,7 +71,7 @@ import rgbmatrix
 sys.path.insert(0, "/src")
 
 from app import App  # noqa: E402 -- needs /src on sys.path
-from behaviors.flocking import FlockingBehavior  # noqa: E402
+from behaviors.swim import SwimBehavior  # noqa: E402
 from config import load_settings, persist_seconds, poll_seconds  # noqa: E402
 from home.ha_client import from_settings  # noqa: E402
 from home.no_sensors import NoSensors  # noqa: E402
@@ -199,7 +199,7 @@ net_total = net_max = 0
 stats_start = time.monotonic_ns()
 
 if DEBUG:
-    _render = FlockingBehavior.render
+    _render = SwimBehavior.render
 
     def _timed_render(self):
         global render_ns
@@ -207,7 +207,7 @@ if DEBUG:
         _render(self)
         render_ns += time.monotonic_ns() - t
 
-    FlockingBehavior.render = _timed_render
+    SwimBehavior.render = _timed_render
 
     # The pond background is drawn into the same canvas, so count it as render
     _draw_frame = scenes.pond.draw_frame

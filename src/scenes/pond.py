@@ -9,6 +9,7 @@ from creatures.fish_boid import FishBoid
 from graphics.vector import Vector
 from behaviors.circle import CircleBehavior
 from behaviors.flocking import FlockingBehavior
+from behaviors.wander import WanderBehavior
 from _imageload import load_image
 from graphics.graphics_helpers import dim_palette, make_canvas
 
@@ -25,6 +26,14 @@ POND_BRIGHTNESS = 0.1  # 0.0-1.0, applied to the pond sprite's palette
 # colors go in the free indices after them.
 KOI_COLOR = 6
 BOID_COLOR = 7
+
+# Background boids: independent flocks of BOIDS_PER_FLOCK, each small enough for
+# the direct neighbour loop (under grid_min_boids)
+BOID_FLOCKS = 3
+BOIDS_PER_FLOCK = 10
+
+# Try the koi on WanderBehavior instead of flocking
+KOI_WANDER = False
 
 
 def draw_frame(canvas, sprite, x, y):
@@ -91,62 +100,85 @@ def create_scene(width=64, height=64):
         Fish(Vector(16, 16), 0.5, KOI_COLOR),
         Fish(Vector(40, 40), 0.5, KOI_COLOR),
     ]
-    koi_flock = FlockingBehavior(
-        canvas,
-        width,
-        height,
-        outside_window_size=30,
-        wall_avoid_distance=30,
-        perception_radius=10,
-        fov_degrees=90,
-        separation_force=50.0,
-        alignment_force=5.0,
-        cohesion_force=5.0,
-        avoidance_force=100.0,
-        random_steer=50,
-        min_speed=1.0,
-        max_speed=25.0,
-        cruise_speed=20.0,
-        cruise_force=2.0,
-    )
-    koi_flock.add_boids(koi_fish)
-
-    # Boids Flocks
-    boid_creatures = []
-    for _ in range(50):
-        boid_creatures.append(
-            FishBoid(
-                Vector(random.randrange(0, width), random.randrange(0, height)),
-                BOID_COLOR,
-            )
+    if KOI_WANDER:
+        koi_behavior = WanderBehavior(
+            canvas,
+            width,
+            height,
+            outside_window_size=30,
+            wall_avoid_distance=30,
+            avoidance_force=100.0,
+            min_speed=1.0,
+            max_speed=25.0,
+            cruise_speed=20.0,
+            max_turn=1.5,
+            retarget=(1.0, 4.0),
         )
+    else:
+        koi_behavior = FlockingBehavior(
+            canvas,
+            width,
+            height,
+            outside_window_size=30,
+            wall_avoid_distance=30,
+            perception_radius=10,
+            fov_degrees=90,
+            separation_force=50.0,
+            alignment_force=5.0,
+            cohesion_force=5.0,
+            avoidance_force=100.0,
+            random_steer=50,
+            min_speed=1.0,
+            max_speed=25.0,
+            cruise_speed=20.0,
+            cruise_force=2.0,
+        )
+    koi_behavior.add(koi_fish)
 
-    flock_behavior = FlockingBehavior(
-        canvas,
-        width,
-        height,
-        outside_window_size=30,
-        wall_avoid_distance=30,
-        perception_radius=5,
-        fov_degrees=270,
-        separation_force=25.0,
-        alignment_force=5.0,
-        cohesion_force=5.0,
-        avoidance_force=200.0,
-        random_steer=1,
-        min_speed=1.0,
-        max_speed=50.0,
-        cruise_speed=40.0,
-        cruise_force=2.0,
-    )
-    flock_behavior.add_boids(boid_creatures)
+    # Background boid flocks, each starting in its own third of the tank. They
+    # don't see each other, so they pass through one another as separate schools.
+    boid_flocks = []
+    third = width / BOID_FLOCKS
+    for k in range(BOID_FLOCKS):
+        flock = FlockingBehavior(
+            canvas,
+            width,
+            height,
+            outside_window_size=30,
+            wall_avoid_distance=30,
+            perception_radius=10,
+            fov_degrees=270,
+            separation_force=25.0,
+            alignment_force=5.0,
+            cohesion_force=10.0,
+            avoidance_force=200.0,
+            random_steer=1,
+            min_speed=1.0,
+            max_speed=50.0,
+            cruise_speed=40.0,
+            cruise_force=2.0,
+        )
+        flock.add(
+            [
+                FishBoid(
+                    Vector(
+                        random.uniform(k * third, (k + 1) * third),
+                        random.randrange(0, height),
+                    ),
+                    BOID_COLOR,
+                )
+                for _ in range(BOIDS_PER_FLOCK)
+            ]
+        )
+        boid_flocks.append(flock)
 
     def update(dt):
         # The background goes first: it erases last frame's creatures, then each
         # behavior draws its creatures on top
         update_pond(dt)
         draw_pond(canvas)
-        koi_flock.update(dt)
-        flock_behavior.update(dt)
+        koi_behavior.update(dt)
+        for flock in boid_flocks:
+            flock.update(dt)
 
     return group, update

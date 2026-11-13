@@ -1,13 +1,17 @@
 import math
 import random
 
-from behaviors.behavior import Behavior
-from creatures.creature import Creature
+from behaviors.swim import SwimBehavior
 
 DIRECTIONS = (-1, 0, 1)
 
+# How the field of view is checked, picked once from fov_degrees
+FOV_ALL = 0  # >= 360: sees everything
+FOV_FRONT = 1  # <= 180: a cone in front, nothing behind
+FOV_WIDE = 2  # > 180: everything except a cone behind
 
-class FlockingBehavior(Behavior):
+
+class FlockingBehavior(SwimBehavior):
     def __init__(
         self,
         bitmap,
@@ -26,50 +30,54 @@ class FlockingBehavior(Behavior):
         max_speed: float,
         cruise_speed: float,
         cruise_force: float,
+        grid_min_boids: int = 24,
+        steer_half: bool = True,
     ):
         """
-        Flocking behavior for a group of boids. The boids render into bitmap, the
-        scene's full-screen canvas, which the scene redraws the background into
-        before each update.
+        Flocking (separation, alignment, cohesion) for a group of boids.
+
+        grid_min_boids: below this many boids, each steered boid checks every
+        other boid directly; at or above it, the spatial grid is used. Both paths
+        flock with the same neighbours (within perception_radius and the field of
+        view), so the threshold only changes the speed.
+
+        steer_half: steer only half the boids each frame, alternating between even
+        and odd indices. Every boid still moves every frame.
         """
-        self.bitmap = bitmap
-        self.width = width
-        self.height = height
-        self.outside_window_size = outside_window_size
-        self.wall_avoid_distance = wall_avoid_distance
-
-        # Actual size of the grid that the boids will wander around.
-        self.left = -outside_window_size
-        self.right = width + outside_window_size
-        self.top = -outside_window_size
-        self.bottom = height + outside_window_size
-
-        # Inner rectangle where every wall is at least wall_avoid_distance away, so
-        # avoidance is zero and can be skipped. Clamped at 0 because ease_in still
-        # pushes boids that are past the wall when wall_avoid_distance <= 0.
-        avoid = max(wall_avoid_distance, 0)
-        self.safe_left = self.left + avoid
-        self.safe_right = self.right - avoid
-        self.safe_top = self.top + avoid
-        self.safe_bottom = self.bottom - avoid
+        super().__init__(
+            bitmap,
+            width,
+            height,
+            outside_window_size,
+            wall_avoid_distance,
+            avoidance_force,
+            min_speed,
+            max_speed,
+            cruise_speed,
+        )
 
         # How much the boids can see
         self.perception_radius = perception_radius
         self.fov_degrees = fov_degrees
         self.cos_half_sq = math.cos(math.radians(fov_degrees / 2)) ** 2
+        if fov_degrees >= 360:
+            self.fov_mode = FOV_ALL
+        elif fov_degrees <= 180:
+            self.fov_mode = FOV_FRONT
+        else:
+            self.fov_mode = FOV_WIDE
 
         # Forces that act on the boid
         self.separation_force = separation_force
         self.alignment_force = alignment_force
         self.cohesion_force = cohesion_force
-        self.avoidance_force = avoidance_force
         self.random_steer = random_steer
-        self.min_speed = min_speed
-        self.max_speed = max_speed
-        # Speed boids drift back to after being slowed down or sped up by other
-        # forces. cruise_force is how quickly (per second) they close the gap.
-        self.cruise_speed = cruise_speed
+        # cruise_force is how quickly (per second) boids drift back to
+        # cruise_speed after being slowed down or sped up by other forces.
         self.cruise_force = cruise_force
+
+        self.grid_min_boids = grid_min_boids
+        self.steer_half = steer_half
 
         # Spatial grid to find the neighbors of boids. The swim area has fixed bounds,
         # so it's a flat list of cells preallocated once. Boids aren't clamped to the
@@ -85,45 +93,18 @@ class FlockingBehavior(Behavior):
         # Index of cell (0, 0), so a cell's index is cell_origin + cx + cy * cols.
         # +1 skips the padding cell.
         self.cell_origin = (1 - self.min_cx) + (1 - self.min_cy) * self.cols
-        # Cells hold boid indices into the flat lists below.
+        # Cells hold boid indices into the flat lists.
         self.cells: list[list[int]] = [[] for _ in range(self.cols * rows)]
         # Cells that have boids in them, so only those need clearing each frame.
         self.occupied_cells: list[list[int]] = []
         self.neighbor_offsets = tuple(
             dx + dy * self.cols for dy in DIRECTIONS for dx in DIRECTIONS
         )
-        self.boids: list[Creature] = []
-        # Flat per-boid state indexed by position in self.boids, so the hot loops
-        # read plain floats instead of chasing Creature/Vector attributes.
-        # These positions are the source of truth: the behavior integrates them each
-        # frame and pushes them to the boids with Creature.set_state, rather than
-        # reading positions back from the boids.
-        self.xs: list[float] = []
-        self.ys: list[float] = []
-        # Velocity of each boid in pixels per second. This carries momentum between
-        # frames, unlike Creature.velocity which is only the last frame's movement.
-        self.vxs: list[float] = []
-        self.vys: list[float] = []
-        # How far past the window edge a boid can be and still draw a pixel on
-        # screen. +1 covers flooring the position to a pixel.
-        self.render_margin = 1
-        # Steering is only updated for half the boids each frame, alternating between
-        # even and odd indices. Every boid still moves every frame.
+        # Alternates between even (0) and odd (1) boids when steer_half is on
         self.steer_parity = 0
         # Length of the previous frame, so steering can cover the time since each
         # boid was last steered (two frames ago).
         self.prev_dt = 0.0
-
-    def add_boids(self, boids: list[Creature]):
-        self.boids.extend(boids)
-        for boid in boids:
-            self.xs.append(boid.x)
-            self.ys.append(boid.y)
-            self.render_margin = max(self.render_margin, boid.render_radius + 1)
-            # Start each boid moving in a random direction
-            angle = random.uniform(0, 2 * math.pi)
-            self.vxs.append(math.cos(angle) * self.cruise_speed)
-            self.vys.append(math.sin(angle) * self.cruise_speed)
 
     def cell_index(self, x: float, y: float) -> int:
         """
@@ -137,194 +118,17 @@ class FlockingBehavior(Behavior):
         # +1 skips the padding cell
         return (cx - self.min_cx + 1) + (cy - self.min_cy + 1) * self.cols
 
-    def in_fov(
-        self, dx: float, dy: float, dist_sq: float, dir_x: float, dir_y: float
-    ) -> bool:
+    def _build_grid(self, count: int):
         """
-        Is the neighbor at offset (dx, dy) inside the view cone of a boid facing
-        (dir_x, dir_y)?
-        """
-        if self.fov_degrees >= 360:
-            return True
-
-        # A negative dot product means the neighbor is behind the boid
-        dot_product = dx * dir_x + dy * dir_y
-
-        if self.fov_degrees <= 180:
-            # Narrow hemisphere in front of boid so ignore everything behind.
-            if dot_product <= 0:
-                return False
-
-            return dot_product**2 >= dist_sq * self.cos_half_sq
-        else:
-            # Wider than 180, so we only remove a small cone behind.
-            if dot_product >= 0:
-                return True
-            return dot_product**2 <= dist_sq * self.cos_half_sq
-
-    def get_neighbors(self, i: int) -> list[int]:
-        """
-        Get indices of the neighbors of boid i from the 3x3 cells around it in the
-        spatial grid, removing the ones outside its field of view.
-
-        For now we'll just return all of the neighbors as one. Maybe later we can
-        support different radii for each force.
+        Clear the grid and put every boid in its cell.
         """
         cells = self.cells
-        xs = self.xs
-        ys = self.ys
-        bx = xs[i]
-        by = ys[i]
-        # Inlined cell_index(bx, by). Only boids that overshoot the swim area need
-        # clamping, so the min/max calls are skipped for the rest.
-        radius = self.perception_radius
-        cx = int(bx // radius)
-        cy = int(by // radius)
-        min_cx = self.min_cx
-        max_cx = self.max_cx
-        min_cy = self.min_cy
-        max_cy = self.max_cy
-        if not (min_cx <= cx <= max_cx and min_cy <= cy <= max_cy):
-            cx = min(max(cx, min_cx), max_cx)
-            cy = min(max(cy, min_cy), max_cy)
-        index = self.cell_origin + cx + cy * self.cols
-        neighbors = []
-
-        vx = self.vxs[i]
-        vy = self.vys[i]
-        speed = math.sqrt(vx * vx + vy * vy)
-        if speed < 1e-9:
-            dir_x = dir_y = 0.0
-        else:
-            dir_x = vx / speed
-            dir_y = vy / speed
-
-        for offset in self.neighbor_offsets:
-            for j in cells[index + offset]:
-                if j == i:
-                    continue
-
-                dx = xs[j] - bx
-                dy = ys[j] - by
-                dist_sq = dx * dx + dy * dy
-                # Same position has no direction to push or see
-                if dist_sq == 0 or not self.in_fov(dx, dy, dist_sq, dir_x, dir_y):
-                    continue
-
-                neighbors.append(j)
-
-        return neighbors
-
-    def flock(self, i: int, neighbors: list[int]) -> tuple[float, float]:
-        """
-        Separation, alignment, and cohesion in a single pass over the neighbors.
-        Uses plain floats in the loop to avoid allocating Vectors per neighbor.
-        We combine the three forces so that we don't need to iterate over neighbors
-        for each force individually.
-
-        - Separation: move away from neighbors, closer ones pushing harder.
-        - Alignment: match the average velocity of neighbors.
-        - Cohesion: move towards the neighbors' center of mass.
-        """
-        if not neighbors:
-            return 0.0, 0.0
-
-        xs = self.xs
-        ys = self.ys
-        vxs = self.vxs
-        vys = self.vys
-        bx = xs[i]
-        by = ys[i]
-
-        # Running totals, one set per force
-        sep_x = sep_y = 0.0  # separation: sum of pushes away
-        sum_vx = sum_vy = 0.0  # alignment: sum of neighbor velocities
-        sum_dx = sum_dy = 0.0  # cohesion: sum of offsets to neighbors
-
-        for j in neighbors:
-            # Shared: offset to the neighbor, used by separation and cohesion
-            dx = xs[j] - bx
-            dy = ys[j] - by
-            dist_sq = dx * dx + dy * dy
-
-            # Separation: -offset / dist^2 is a unit vector away scaled by
-            # 1/dist, so closer neighbors push harder.
-            sep_x -= dx / dist_sq
-            sep_y -= dy / dist_sq
-
-            # Alignment
-            sum_vx += vxs[j]
-            sum_vy += vys[j]
-
-            # Cohesion: avg(offset) == avg(position) - boid position
-            sum_dx += dx
-            sum_dy += dy
-
-        inverse_count = 1.0 / len(neighbors)
-        # Separation is a sum, alignment and cohesion are averages
-        fx = (
-            sep_x * self.separation_force
-            + (sum_vx * inverse_count - vxs[i]) * self.alignment_force
-            + sum_dx * inverse_count * self.cohesion_force
-        )
-        fy = (
-            sep_y * self.separation_force
-            + (sum_vy * inverse_count - vys[i]) * self.alignment_force
-            + sum_dy * inverse_count * self.cohesion_force
-        )
-        return fx, fy
-
-    def ease_in(self, distance_to_wall: float) -> float:
-        """
-        Ease the avoidance force in as a boid approaches a wall.
-        Returns 0 when wall_avoid_distance or further away from the wall, ramping
-        up to 1 at the wall and staying at 1 past it.
-        """
-        if self.wall_avoid_distance <= 0:
-            return 1.0 if distance_to_wall <= 0 else 0.0
-
-        # How far into the avoid distance are we?
-        # Aka in a normal animation, how far along are we from 0 to 1
-        time = 1.0 - distance_to_wall / self.wall_avoid_distance
-        time = max(0.0, min(time, 1.0))
-        return time**2
-
-    def avoidance(self, x: float, y: float) -> tuple[float, float]:
-        """
-        Move boids away from obstacles such as the walls.
-        The walls sit outside_window_size beyond each edge of the window, so a
-        positive value lets boids swim off screen before turning back. We'll apply
-        the avoidance force more as they get within wall_avoid_distance of a wall.
-        """
-
-        dx = self.ease_in(x - self.left) - self.ease_in(self.right - x)
-        dy = self.ease_in(y - self.top) - self.ease_in(self.bottom - y)
-
-        return dx * self.avoidance_force, dy * self.avoidance_force
-
-    def update(self, dt: float):
-        """
-        1. Clear previous grid and add all boids to grid
-        2. For half the boids (alternating each frame), get neighbors and add
-           separation, alignment, and cohesion
-        3. Add avoidance
-        4. Add noise and cruise
-        5. Apply the summed forces as acceleration and clamp speed to [min_speed, max_speed]
-        6. Move boid based on velocity and push the new state to the creature
-        7. Render the boids that are on screen
-        """
-        boids = self.boids
-        count = len(boids)
-        cells = self.cells
-        xs = self.xs
-        ys = self.ys
-        vxs = self.vxs
-        vys = self.vys
-
-        # 1. Clear grid and add all boids
-        for cell in self.occupied_cells:
+        occupied = self.occupied_cells
+        for cell in occupied:
             cell.clear()
-        self.occupied_cells.clear()
+        occupied.clear()
+        xs = self.xs
+        ys = self.ys
         radius = self.perception_radius
         min_cx = self.min_cx
         max_cx = self.max_cx
@@ -342,20 +146,69 @@ class FlockingBehavior(Behavior):
                 cy = min(max(cy, min_cy), max_cy)
             cell = cells[cell_origin + cx + cy * cols]
             if not cell:
-                self.occupied_cells.append(cell)
+                occupied.append(cell)
             cell.append(i)
 
-        # Now that grid is computed, we can proceed with steps #2-5. Compute every new
-        # velocity before moving anything so each boid sees the same snapshot.
-        # Only half the boids are steered this frame; the others keep their velocity.
-        # Each steered boid was last steered two frames ago, so the forces are applied
-        # over both frames.
+    def _steer(self, dt: float):
+        """
+        For the boids steered this frame (half of them, alternating, or all):
+        1. Separation, alignment and cohesion, from one pass over the neighbours
+           within perception_radius and the field of view. Below grid_min_boids
+           the candidates are every boid; otherwise the 3x3 grid cells around it.
+        2. Avoidance, near the walls only
+        3. Random noise and a pull back towards cruise speed
+        4. Apply the forces as acceleration over the time since the boid was last
+           steered, and clamp speed to [min_speed, max_speed]
+
+        Every new velocity is computed before any is stored, so each boid sees the
+        same snapshot.
+        """
+        count = len(self.creatures)
+        xs = self.xs
+        ys = self.ys
+        vxs = self.vxs
+        vys = self.vys
+
+        # Candidate neighbours of a boid are every j in source[base + offset] for
+        # offset in offsets. Direct: one group holding every boid. Grid: the 3x3
+        # cells around the boid's cell, with base set per boid.
+        use_grid = count >= self.grid_min_boids
+        if use_grid:
+            self._build_grid(count)
+            source = self.cells
+            offsets = self.neighbor_offsets
+        else:
+            source = (range(count),)
+            offsets = (0,)
+        base = 0
+
         new_vxs = vxs[:]
         new_vys = vys[:]
-        steer_dt = dt + self.prev_dt
-        self.prev_dt = dt
-        parity = self.steer_parity
-        self.steer_parity = 1 - parity
+        if self.steer_half:
+            step = 2
+            start = self.steer_parity
+            self.steer_parity = 1 - start
+            # Each steered boid was last steered two frames ago
+            steer_dt = dt + self.prev_dt
+            self.prev_dt = dt
+        else:
+            step = 1
+            start = 0
+            steer_dt = dt
+
+        radius = self.perception_radius
+        radius_sq = radius * radius
+        min_cx = self.min_cx
+        max_cx = self.max_cx
+        min_cy = self.min_cy
+        max_cy = self.max_cy
+        cols = self.cols
+        cell_origin = self.cell_origin
+        fov_mode = self.fov_mode
+        cos_half_sq = self.cos_half_sq
+        separation_force = self.separation_force
+        alignment_force = self.alignment_force
+        cohesion_force = self.cohesion_force
         min_speed = self.min_speed
         max_speed = self.max_speed
         cruise_speed = self.cruise_speed
@@ -366,34 +219,100 @@ class FlockingBehavior(Behavior):
         safe_bottom = self.safe_bottom
         random_steer = self.random_steer
         uniform = random.uniform
-        for i in range(parity, count, 2):
+        sqrt = math.sqrt
+        for i in range(start, count, step):
+            bx = xs[i]
+            by = ys[i]
             vx = vxs[i]
             vy = vys[i]
+            speed = sqrt(vx * vx + vy * vy)
+            if speed < 1e-9:
+                dir_x = dir_y = 0.0
+            else:
+                dir_x = vx / speed
+                dir_y = vy / speed
 
-            # 2, 3: Separation, alignment, cohesion, avoidance
-            fx, fy = self.flock(i, self.get_neighbors(i))
-            x = xs[i]
-            y = ys[i]
-            # Avoidance is zero unless the boid is within wall_avoid_distance of a wall
-            if not (safe_left < x < safe_right and safe_top < y < safe_bottom):
-                ax, ay = self.avoidance(x, y)
+            if use_grid:
+                # Inlined cell_index(bx, by), clamping only boids that overshoot
+                cx = int(bx // radius)
+                cy = int(by // radius)
+                if not (min_cx <= cx <= max_cx and min_cy <= cy <= max_cy):
+                    cx = min(max(cx, min_cx), max_cx)
+                    cy = min(max(cy, min_cy), max_cy)
+                base = cell_origin + cx + cy * cols
+
+            # 1. Running totals, one set per force
+            n = 0
+            sep_x = sep_y = 0.0  # separation: sum of pushes away
+            sum_vx = sum_vy = 0.0  # alignment: sum of neighbor velocities
+            sum_dx = sum_dy = 0.0  # cohesion: sum of offsets to neighbors
+            for offset in offsets:
+                for j in source[base + offset]:
+                    dx = xs[j] - bx
+                    dy = ys[j] - by
+                    dist_sq = dx * dx + dy * dy
+                    # Also skips the boid itself, and any boid at the same
+                    # position, which has no direction to push or see
+                    if dist_sq > radius_sq or dist_sq == 0:
+                        continue
+                    # Inlined field of view check. A negative dot product means
+                    # the neighbor is behind the boid.
+                    if fov_mode:
+                        dot = dx * dir_x + dy * dir_y
+                        if fov_mode == FOV_FRONT:
+                            if dot <= 0 or dot * dot < dist_sq * cos_half_sq:
+                                continue
+                        elif dot < 0 and dot * dot > dist_sq * cos_half_sq:
+                            continue
+
+                    n += 1
+                    # Separation: -offset / dist^2 is a unit vector away scaled by
+                    # 1/dist, so closer neighbors push harder.
+                    sep_x -= dx / dist_sq
+                    sep_y -= dy / dist_sq
+                    # Alignment
+                    sum_vx += vxs[j]
+                    sum_vy += vys[j]
+                    # Cohesion: avg(offset) == avg(position) - boid position
+                    sum_dx += dx
+                    sum_dy += dy
+
+            if n:
+                inverse_count = 1.0 / n
+                # Separation is a sum, alignment and cohesion are averages
+                fx = (
+                    sep_x * separation_force
+                    + (sum_vx * inverse_count - vx) * alignment_force
+                    + sum_dx * inverse_count * cohesion_force
+                )
+                fy = (
+                    sep_y * separation_force
+                    + (sum_vy * inverse_count - vy) * alignment_force
+                    + sum_dy * inverse_count * cohesion_force
+                )
+            else:
+                fx = fy = 0.0
+
+            # 2. Avoidance is zero unless the boid is within wall_avoid_distance of
+            # a wall
+            if not (safe_left < bx < safe_right and safe_top < by < safe_bottom):
+                ax, ay = self.avoidance(bx, by)
                 fx += ax
                 fy += ay
 
-            # 4: Add random noise and pull back towards cruise speed along the
+            # 3. Random noise and a pull back towards cruise speed along the
             # current heading
             fx += uniform(-random_steer, random_steer)
             fy += uniform(-random_steer, random_steer)
-            speed = math.sqrt(vx * vx + vy * vy)
             if speed != 0:
                 scale = (cruise_speed - speed) * cruise_force / speed
                 fx += vx * scale
                 fy += vy * scale
 
-            # 5. Apply forces as acceleration and clamp speed to [min_speed, max_speed]
+            # 4. Apply forces as acceleration and clamp speed
             vx += fx * steer_dt
             vy += fy * steer_dt
-            speed = math.sqrt(vx * vx + vy * vy)
+            speed = sqrt(vx * vx + vy * vy)
             if speed != 0:
                 scale = max(min_speed, min(speed, max_speed)) / speed
                 vx *= scale
@@ -401,37 +320,5 @@ class FlockingBehavior(Behavior):
             new_vxs[i] = vx
             new_vys[i] = vy
 
-        # 6. Move boids
         self.vxs = new_vxs
         self.vys = new_vys
-        for i in range(count):
-            vx = new_vxs[i]
-            vy = new_vys[i]
-            x = xs[i] + vx * dt
-            y = ys[i] + vy * dt
-            xs[i] = x
-            ys[i] = y
-            boids[i].set_state(x, y, vx, vy)
-
-        # 7. Render
-        self.render()
-
-    def render(self):
-        """
-        Draw every boid that can reach the screen. Off-screen boids are skipped;
-        the scene's background redraw erases wherever they were last drawn.
-        """
-        bitmap = self.bitmap
-        boids = self.boids
-        xs = self.xs
-        ys = self.ys
-        margin = self.render_margin
-        view_left = -margin
-        view_right = self.width + margin
-        view_top = -margin
-        view_bottom = self.height + margin
-        for i in range(len(boids)):
-            x = xs[i]
-            y = ys[i]
-            if view_left < x < view_right and view_top < y < view_bottom:
-                boids[i].render(bitmap)

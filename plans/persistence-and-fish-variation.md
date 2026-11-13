@@ -191,9 +191,10 @@ The rule from OPTIMIZATIONS.md still applies: method calls and allocations are w
   - The flat `xs`/`ys`/`vxs`/`vys` lists and `add(creatures)`/`remove(creature)`. `remove` is a swap-remove: the last entry moves into the hole, so each list stays dense. It's shared by flocking and wander, and later by special fish.
   - Wall bounds, the safe rectangle, and the soft wall push (the current `ease_in`/`avoidance`, inlined).
   - Speed clamping, the move loop, `set_state`, and the on-screen render culling.
-  - `update(dt)` calls `self._steer(dt, new_vxs, new_vys)` once, then moves and renders. `_steer` is the only thing subclasses write, and it loops over every creature itself.
+  - `update(dt)` calls `self._steer(dt)` once, then moves and renders. `_steer` is the only thing subclasses write, and it loops over every creature itself. It updates `vxs`/`vys` in place (wander) or replaces them with new lists (flocking, which needs a snapshot). Subclass per-creature lists are added in `_add_state` and listed in `_state_lists`, so `remove` swaps them too.
+  - Speed clamping stays inlined in each `_steer`, so flocking only clamps the boids it steered this frame.
 - **`FlockingBehavior(SwimBehavior)`**: separation, alignment and cohesion.
-  - **The neighbour search switches at `grid_min_boids`.** This is a constructor setting (default 16, to be measured), so each species' `Flock(...)` can set it.
+  - **The neighbour search switches at `grid_min_boids`.** This is a constructor setting (default 24, from the M3 board measurements in OPTIMIZATIONS.md: the direct loop wins below ~24 boids, the two are even at 24–32, and the grid wins clearly at 50), so each species' `Flock(...)` can set it.
     - **Below the threshold:** no grid. `_steer` checks every other boid directly. The cell bookkeeping is skipped entirely: no clearing of occupied cells, no cell index per boid, no 9-cell loop.
     - **At or above the threshold:** the current grid.
     - It's chosen once per frame, `use_grid = count >= self.grid_min_boids`, so births and deaths can cross it.
@@ -339,6 +340,7 @@ Example: a lightning fish that appears only while the washing machine is running
   - `src/behaviors/{lifecycle,swim,wander}.py`
   - `src/persist/{__init__,document,store}.py`
   - `tools/pull_state.py`
+  - `src/bench_flock.py`: grid vs direct timings (M3), runnable on the board's REPL
   - `plans/persistence-and-fish-variation.md`
 - **Modified:**
   - `src/app.py`: settings load, dirty marking, `Store.tick`, `DUMP STATE`, `set_sensors`

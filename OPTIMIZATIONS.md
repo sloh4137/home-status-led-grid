@@ -107,11 +107,12 @@ allocations per frame, plus garbage-collector pauses.
       allocations and the unused `atan2` in `CreatureSpine.move`. Other creatures
       fall back to the default `set_state`, which calls `move()`, so the behavior
       still works with any creature. Physics went from 144 ms to 102 ms.
-- [ ] Merge `get_neighbors` into `flock`, with `in_fov` inlined. Each steered boid
+- [x] Merge `get_neighbors` into `flock`, with `in_fov` inlined. Each steered boid
       still builds a `neighbors` list, and `flock` loops over it again,
       recomputing `dx`, `dy`, and `dist_sq`. One loop that checks the field of
       view and adds to the sums inline removes the list, the second pass, and a
-      method call per candidate.
+      method call per candidate. Done in M3 (see section 6); the loop also
+      checks `dist_sq <= perception_radius²` now.
 
 ## 3. Render
 
@@ -199,3 +200,103 @@ server (timeout), a refused port and a blackholed IP.
 - If refresh rises with the panels shown, the fallback is to blit the
   pre-rendered panel into the pond canvas with
   `bitmaptools.blit(..., skip_source_index=0)` so displayio composites one layer.
+
+## 6. Small flocks without the grid (M3)
+
+From the [persistence and fish variation plan](plans/persistence-and-fish-variation.md).
+
+- `SwimBehavior` (`behaviors/swim.py`) holds the shared flat lists, walls,
+  integration and render; `FlockingBehavior` and `WanderBehavior` only write
+  `_steer(dt)`. `DEBUG` render timing now wraps `SwimBehavior.render`.
+- `FlockingBehavior(grid_min_boids=16)`: below that many boids each steered boid
+  checks every other boid directly, with no grid build. Both paths run the same
+  loop (`for offset in offsets: for j in source[base + offset]`; the direct
+  path's `source` is one group holding every boid) and the same distance and
+  field-of-view checks, so they pick the same neighbours. On the desktop the two
+  modes give identical trajectories for the same seed.
+- The grid path used to accept everyone in the 3×3 cells, reaching
+  ~1.5–2 × `perception_radius`. With the distance check the boids have fewer
+  neighbours, so slightly less cohesion. Retune if the schools look looser.
+- The 50 background boids are now 3 independent flocks of 10, so the pond
+  draws 30 boids instead of 50.
+- `steer_half=False` steers every boid every frame, to measure whether the
+  alternating parity is worth it for tiny flocks.
+
+### Measuring
+
+`src/bench_flock.py` times physics only (render off) for the koi flock at
+n = 4, 8, 16, 24, 32 in both modes, with and without `steer_half`, and the
+background boids as 3 × 10 and 1 × 50 in both modes. On the board, Ctrl-C out
+of `code.py`, then at the REPL:
+
+```python
+import sys; sys.path.insert(0, "/src")
+import bench_flock; bench_flock.run()
+```
+
+### Results
+
+Pond scene on the board, default settings (koi flocking, 3 × 10 boids, all
+direct), readout shown, HA reachable. `DEBUG` stats over 4 lines of 30 frames:
+
+| Setup | FPS | Physics (ms) | Render (ms) | Net avg / max (ms) | Refresh (ms) |
+| ----- | --- | ------------ | ----------- | ------------------ | ------------ |
+| Section 5, readout shown, 5 s poll (1 × 50 boids, grid) | 7.2–7.3 | 94.1–95.4 | 24.0–24.2 | 1.2–1.5 / 8.3 | 15.7–16.4 |
+| M3: 3 × 10 boids, direct loop, merged neighbour loop | 10.1–11.0 | 52.0–55.6 | 21.0–24.3 | 0.2–3.5 / 50.6 | 15.7–16.2 |
+
+- Physics drops by ~42 ms (−44 %) and fps goes from ~7 to ~11. This mixes
+  three changes: 30 boids instead of 50, the direct loop instead of the grid,
+  and the merged neighbour loop. `bench_flock.py` separates them.
+- Render is slightly lower, as expected with 20 fewer boids to blit.
+- One frame took 50.6 ms of net, against a worst of ~9 ms in section 5. It
+  happened once in 120 frames and didn't repeat in the runs below (max 8–10 ms).
+
+Tuning runs, same setup:
+
+| Setup | FPS | Physics (ms) | Render (ms) | Net avg / max (ms) | Refresh (ms) |
+| ----- | --- | ------------ | ----------- | ------------------ | ------------ |
+| 3 × 10 boids, perception 10, cohesion 10, koi wandering | 10.5–11.0 | 50.9–53.9 | 19.8–24.0 | 0.7–1.6 / 8.6 | 15.9–16.5 |
+| 3 × 3 boids, perception 10, cohesion 10, koi wandering | 13.2–14.1 | 35.6–37.6 | 18.4–19.3 | 0.2–2.1 / 9.9 | 15.5–16.2 |
+
+- The wider perception radius (5 → 10) and stronger cohesion (5 → 10) cost
+  nothing measurable: the direct loop checks all 9 other boids in a flock
+  whatever the radius. They're kept, to make up for the distance check
+  leaving each boid fewer neighbours. The koi went back to flocking.
+- Wandering koi save nothing visible, since steering is ~0.4 ms per koi and the
+  spine ~5 ms either way.
+- 3 × 3 boids saves ~16 ms (~0.75 ms per boid at perception 10), but 3 boids
+  don't read as a school. Kept at 3 × 10; revisit after M4's float spine,
+  which targets the ~15 ms the 3 koi cost.
+
+`bench_flock.py` on the board: physics only (render off), ms per frame.
+"Steer" is the flocking alone; "total" adds the move loop and
+`Creature.set_state`, i.e. the koi spine.
+
+| Flock | n | Steer direct | Steer grid | Steer direct, all | Steer grid, all | Total direct | Total grid |
+| ----- | - | ------------ | ---------- | ----------------- | --------------- | ------------ | ---------- |
+| koi   | 4  | 1.63  | 2.28  | 2.47  | 3.52  | 20.16  | 20.91  |
+| koi   | 8  | 2.67  | 3.81  | 4.56  | 6.14  | 38.63  | 39.77  |
+| koi   | 16 | 5.55  | 6.84  | 10.77 | 12.06 | 79.29  | 80.38  |
+| koi   | 24 | 9.95  | 10.69 | 19.30 | 19.33 | 120.88 | 121.69 |
+| koi   | 32 | 14.50 | 14.71 | 31.63 | 29.61 | 157.39 | 158.53 |
+| boids | 3 × 10 | 9.42  | 12.80 | – | – | 12.77 | 16.28 |
+| boids | 1 × 50 | 27.54 | 21.35 | – | – | 31.44 | 25.31 |
+
+("all" = `steer_half=False`; totals are with `steer_half` on.)
+
+- **Crossover: ~24–32 boids.** The direct loop wins below 24 and the two are
+  even at 24–32. The grid only wins clearly at 50 (21.4 vs 27.5 ms). The
+  `grid_min_boids` default is now **24**.
+- **3 × 10 direct vs grid:** 9.4 vs 12.8 ms steer, so the direct loop is the
+  right choice for the background flocks.
+- **3 × 10 vs 1 × 50 (both with the new code):** 12.8 vs 25.3 ms total, about
+  12.5 ms saved. The pond's physics fell by ~42 ms, so the other ~30 ms comes
+  from the merged neighbour loop and the distance check (fewer neighbours) on
+  the old grid path. The old code wasn't benched, so this is by elimination.
+- **`steer_half` stays.** It saves 0.8 ms at n = 4 and 5 ms at n = 16. The
+  saving is less than half, because the velocity list copies and loop setup
+  cost the same either way.
+- **The koi spine is the real cost:** ~4.6–5 ms per koi per frame in
+  `set_state`, against ~0.4 ms of steering. The 3 koi in the pond cost ~15 ms
+  of the ~52 ms physics. This is the `Vector`-allocating `CreatureSpine.move`
+  that M4 replaces with the float spine.
