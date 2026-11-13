@@ -119,7 +119,9 @@ so after a restart every fish starts at a random spot.
 - The pond clock runs in real time: a koi lives about a week. Set
   `POND_TIME_SCALE` to watch it happen faster. Births, deaths and hatchings
   are printed on the console.
-- High CO2 dims the fish (not the water), in visible steps.
+- High CO2 drains the color out of the pond (fish and water), in visible
+  steps: full color at 800 ppm or below, down to 20 % saturation at
+  2000 ppm.
 
 ### Genome fields
 

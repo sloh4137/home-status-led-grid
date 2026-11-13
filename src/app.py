@@ -71,7 +71,7 @@ class App:
         self.group, self._update_scene = scene[0], scene[1]
         # Optional third element: set_sensors(values), called with the whole
         # values dict whenever it changes. The scene decides what each value
-        # means (e.g. CO2 -> creature brightness).
+        # means (e.g. CO2 -> pond saturation).
         self._scene_sensors = scene[2] if len(scene) > 2 else None
         # Sensor readout anchored to the bottom edge
         self.sensor_panel = TextPanel(

@@ -5,7 +5,7 @@ Scene with procedural generated fish
 from _dio import dio
 from config import pond_time_scale
 from creatures import colors
-from creatures.colors import CreatureColors
+from creatures.colors import PondColors
 from creatures.fish_boid import FishBoid
 from creatures.species import KOI, KOI_WANDER as KOI_WANDER_MOTION
 from graphics.vector import Vector
@@ -87,7 +87,8 @@ def create_scene(width=64, height=64, store=None, config=None):
     """
     Build the scene. Returns (group, update(dt), set_sensors(values)) for the
     main loop. set_sensors gets the whole sensor values dict whenever it
-    changes; the CO2 level dims the creatures (not the water).
+    changes; the CO2 level drains the color out of the pond (creatures and
+    water).
 
     The fish come from the store's ``pond`` section (behaviors/lifecycle.py),
     or a fresh pond without one; the store then saves the pond with the rest
@@ -99,7 +100,7 @@ def create_scene(width=64, height=64, store=None, config=None):
 
     group = dio.Group()
     palette, update_pond, draw_pond = load_pond_water(width, height)
-    creature_colors = CreatureColors(palette)
+    pond_colors = PondColors(palette)
     canvas = make_canvas(group, width, height, palette)
 
     # The fish, one behavior per species present, so species never flock
@@ -166,4 +167,4 @@ def create_scene(width=64, height=64, store=None, config=None):
         for flock in boid_flocks:
             flock.update(dt)
 
-    return group, update, creature_colors.set_sensors
+    return group, update, pond_colors.set_sensors

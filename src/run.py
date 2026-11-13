@@ -10,8 +10,8 @@ to the board as CIRCUITPY/settings.toml; --settings points at a different file.
 With HA_URL set it reads live values through home.ha_client.HAClient, otherwise
 it shows FakeSensors values; --fake-sensors shows them even with HA_URL set.
 
-With fake sensors, + / - set CO2 by hand in 100 ppm steps (the creatures dim
-above 800 ppm) and 0 goes back to the slow 400-2200 ppm sweep.
+With fake sensors, + / - set CO2 by hand in 100 ppm steps (the pond loses
+its color above 800 ppm) and 0 goes back to the slow 400-2200 ppm sweep.
 
 Keys stand in for the board's side buttons: Up / Down tap, Enter / Space hold
 (select). The first press opens the menu.

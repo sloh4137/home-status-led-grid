@@ -4,7 +4,7 @@ Used on the desktop when there is no Home Assistant config, and for
 developing the readout without a network. Each interval every value takes a
 small random step and stays within a plausible range. CO2 instead sweeps
 slowly between its low and high (with the random step as jitter), so the
-simulator shows the CO2 brightness shift in a few minutes.
+simulator shows the CO2 saturation shift in a few minutes.
 
 On the desktop, ``key(keysym)`` takes simulator keys (run.py passes them on):
 + / - set CO2 by hand in CO2_KEY_STEP ppm steps, which stops the sweep and
