@@ -650,3 +650,49 @@ over 3 lines:
 - Within noise of M9. The once-per-second check is a float add and a
   compare; aging, breeding and growth only run once per pond hour.
 - The 38.6 ms net maximum is an HA poll, not M10.
+
+### M11: save cost and per-species render cost
+
+**Save cost.** `Store.save` on the board, the board's own pond (not yet
+`tools/full_pond.json`):
+
+| Document | Bytes (compact) | Save (ms) |
+| -------- | --------------- | --------- |
+| M1: settings only | 60 | 152.5 |
+| M11: settings + the board's pond | 900 | 170.5 |
+
+- 15× the bytes for +18 ms: the save is still nearly all the NVS erase and
+  the full 8 KB blob rewrite, as expected from `ByteArray.c`. The rest is
+  `json.dumps`, the CRC and the larger slice copy. A full pond (10 fish +
+  the turtle) is 1366 bytes compact, so expect ~175–180 ms.
+- `Store.save` now prints the split (`json Y, write Z`), so the next board
+  run shows how much of that is JSON.
+- At a few dozen saves a day, that's a few seconds of hitches a day in all.
+
+**Per-species render cost.** `bench_render.py` on the board, ms per call,
+same conditions as the M8 run:
+
+| Fish | Full | Body (discs) | Spots (count) | Parts | Spine |
+| ---- | ---- | ------------ | ------------- | ----- | ----- |
+| koi kohaku | 1.84 | 0.93 (11) | 0.26 (2) | fins 0.33, tail 0.41 | 0.40 |
+| koi shusui | 2.68 | 0.96 (11) | 1.08 (17) | fins 0.36, tail 0.40 | 0.40 |
+| catfish plain | 3.01 | 1.01 (10) | 0 (0) | fins 0.31, tail 0.40, whiskers 1.19 | 0.40 |
+| catfish mottled | 3.50 | 0.99 (10) | 0.54 (7) | fins 0.32, tail 0.41, whiskers 1.19 | 0.44 |
+| sturgeon | 3.23 | 1.00 (14) | 0.87 (14 px) | fins 0.51 + 0.30, tail 0.42, snout 0.25 | 0.55 |
+| turtle slider | 1.49 | 0.22 (2) | 0 | flippers 0.76, shell 0.56 | 0.20 |
+| turtle box | 1.48 | 0.20 (2) | 0 | flippers 0.68, shell 0.56 | 0.18 |
+
+Pond water background: 2.98 ms. Shell sprites: 16 × 17 × 17 px, 4208 bytes.
+
+- The koi is ~0.2 ms cheaper than in M8 (11 body discs instead of 13: the
+  9-joint koi from M9). Everything else is within noise of M8.
+- Per item it's still ~0.1 ms, so the cost of a fish is its item count:
+  the catfish's whiskers (~1.2 ms) are the single most expensive part.
+- **Predicted full pond** (`tools/full_pond.json`: 6 koi, 2 catfish, 2
+  sturgeon, the turtle): about 6 × 2.2 + 3.0 + 3.5 + 2 × 3.2 + 1.5 + 3.0
+  (water) ≈ 30.6 ms of bench render, before the boids. Bench times run
+  below `DEBUG` render (see M8), so the full-pond `DEBUG` run is what
+  counts.
+
+**Full pond fps**: still to measure (deploy `tools/full_pond.json`, read
+the `DEBUG` lines).

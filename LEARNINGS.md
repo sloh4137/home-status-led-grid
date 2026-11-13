@@ -49,11 +49,10 @@ project on the MatrixPortal S3 with CircuitPython.
        payload size. One save a minute flat out would reach 100k cycles in about
        170 days. Saving only when dirty (a few dozen saves a day for the pond's
        hourly ages, births and deaths) makes it decades.
-     - **Save time is ~150 ms**, almost all of it the erase and the 8 KB rewrite,
+     - **Save time is ~150–180 ms**, almost all of it the erase and the 8 KB rewrite,
        so it barely depends on the payload: a visible hitch of a frame or two,
-       once per save. Another reason to keep dirty events rare. (Measured
-       with the settings-only document; the full-pond numbers go in
-       OPTIMIZATIONS.md "M11".)
+       once per save. Another reason to keep dirty events rare. 152.5 ms for
+       a 60-byte document, 170.5 ms for 900 bytes (OPTIMIZATIONS.md "M11").
    - Fits settings and per-creature genomes with room to spare: a full pond (10
      fish + the turtle) is ~1.4 KB of compact JSON. Even full boid state would fit
      (100 boids × 4 float32 = 1.6 KB).
@@ -80,7 +79,7 @@ project on the MatrixPortal S3 with CircuitPython.
 ### Patterns to copy
 
 - Dirty flag + throttled save (save at most every N seconds/minutes). Flash wears
-  out. We dropped the "save immediately on significant events" part: at ~150 ms
+  out. We dropped the "save immediately on significant events" part: at ~170 ms
   per nvm save, a burst of menu taps would stall the animation each time.
 - Defaults first, saved values overlaid; a version field for schema changes.
 - Persist what defines the scene (seed, creature genomes, settings), not every

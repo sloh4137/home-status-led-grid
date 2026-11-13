@@ -95,7 +95,7 @@ board in `microcontroller.nvm`, in the simulator in `state.json` at the repo roo
 `PERSIST_SECONDS` (`settings.toml`, 10–3600, default 60) and only after a change,
 so a change made within that time before a power loss is lost. The pond
 changes about once a pond hour (ages, births, deaths), so that's a few dozen
-saves a day. Each save on the board takes ~150 ms (a short hitch in the
+saves a day. Each save on the board takes ~170 ms (a short hitch in the
 animation), almost all of it rewriting the 8 KB nvm blob. The simulator also
 saves when its window closes.
 
