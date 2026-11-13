@@ -16,6 +16,7 @@
 #       creatures/
 #       graphics/
 #       home/
+#       persist/
 #       scenes/
 #       sprites/
 #       ui/
@@ -37,13 +38,24 @@
 #   HA_TOKEN          HA -> your profile -> Security -> Long-lived access tokens
 #   HA_CO2_ENTITY, HA_TEMPERATURE_ENTITY, HA_HUMIDITY_ENTITY   entity IDs
 #   HA_POLL_SECONDS   1-60, default 5
+#   PERSIST_SECONDS   10-3600, default 60: minimum seconds between state saves
 # The readout shows WIFI... while connecting, then the values, or NO WIFI /
 # NO HA CFG if setup failed, or HA OFFLINE after 3 intervals without a read.
 #
 # Buttons: UP / DOWN open the menu, a tap moves the highlight and holding
-# either for ~0.6 s selects. Items: ROTATE 90, SENSORS ON/OFF, HIDE MENU.
-# Settings aren't saved and reset on reboot. RESET is a hardware reset and
-# only reboots; code can't read it.
+# either for ~0.6 s selects. Items: ROTATE 90, SENSORS ON/OFF, DUMP STATE,
+# HIDE MENU. The rotation, SENSORS ON/OFF and the pond's fish (their
+# genomes: species, variety, spot seed, size, age) are saved to
+# microcontroller.nvm at most once per PERSIST_SECONDS, so a change made just
+# before a power loss is lost.
+#
+# Editing the state: at startup (and on DUMP STATE) the board prints its
+# state as JSON between ---STATE BEGIN--- / ---STATE END--- on the serial
+# console (tools/pull_state.py saves it to a file). Put an edited copy on the
+# drive as CIRCUITPY/state.json (./deploy.sh --state FILE) and the auto-reload
+# imports it, once: the board remembers the file's checksum, so the file can
+# stay on the drive. A broken file shows BAD STATE.JSON and changes nothing.
+# RESET is a hardware reset and only reboots; code can't read it.
 #
 # Hardware note: the 64x64 panel needs the Address-E solder jumper on the
 # MatrixPortal closed (middle pad shorted to "8" for Adafruit panels).
@@ -54,15 +66,17 @@ import time
 import board
 import displayio
 import framebufferio
+import microcontroller
 import rgbmatrix
 
 sys.path.insert(0, "/src")
 
 from app import App  # noqa: E402 -- needs /src on sys.path
-from behaviors.flocking import FlockingBehavior  # noqa: E402
-from config import load_settings, poll_seconds  # noqa: E402
+from behaviors.swim import SwimBehavior  # noqa: E402
+from config import load_settings, persist_seconds, poll_seconds  # noqa: E402
 from home.ha_client import from_settings  # noqa: E402
 from home.no_sensors import NoSensors  # noqa: E402
+from persist.store import NvmBackend, Store  # noqa: E402
 import scenes.pond  # noqa: E402
 from ui.buttons import KeypadButtons  # noqa: E402
 
@@ -70,6 +84,7 @@ WIDTH, HEIGHT = 64, 64
 FPS = 30
 DEBUG = True  # time physics, render, net and refresh; print them to the serial console
 STATS_EVERY = 30  # frames between timing printouts on the serial console
+IMPORT_PATH = "/state.json"  # CIRCUITPY/state.json, imported once at startup
 
 # ---------------------------------------------------------------- matrix setup
 displayio.release_displays()
@@ -108,6 +123,14 @@ def set_rotation(degrees):
 
 
 # ---------------------------------------------------------------- app
+settings = load_settings()
+print("nvm: %d bytes" % len(microcontroller.nvm))
+store = Store(
+    NvmBackend(microcontroller.nvm),
+    persist_seconds(settings),
+    time.monotonic(),
+    import_path=IMPORT_PATH,
+)
 app = App(
     WIDTH,
     HEIGHT,
@@ -116,9 +139,12 @@ app = App(
     time.monotonic(),
     KeypadButtons(),
     set_rotation,
+    store,
+    settings,
 )
 display.root_group = app.group
 display.refresh()  # show WIFI... while connecting, which can take seconds
+store.dump()  # the state after loading and importing, for tools/pull_state.py
 
 
 # ---------------------------------------------------------------- HA
@@ -158,7 +184,7 @@ def connect_sensors(settings):
         return NoSensors("NO HA CFG")
 
 
-sensors = connect_sensors(load_settings())
+sensors = connect_sensors(settings)
 app.set_sensors(sensors, time.monotonic())
 
 # ---------------------------------------------------------------- timing
@@ -175,7 +201,7 @@ net_total = net_max = 0
 stats_start = time.monotonic_ns()
 
 if DEBUG:
-    _render = FlockingBehavior.render
+    _render = SwimBehavior.render
 
     def _timed_render(self):
         global render_ns
@@ -183,7 +209,7 @@ if DEBUG:
         _render(self)
         render_ns += time.monotonic_ns() - t
 
-    FlockingBehavior.render = _timed_render
+    SwimBehavior.render = _timed_render
 
     # The pond background is drawn into the same canvas, so count it as render
     _draw_frame = scenes.pond.draw_frame

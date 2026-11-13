@@ -2,10 +2,12 @@
 
 Each scene module exposes:
 
-    create_scene(width, height) -> (group, update)
+    create_scene(width, height, store=None) -> (group, update[, set_sensors])
 
 where ``group`` is a displayio-style Group and ``update`` advances the
-animation by ``dt`` seconds. Scene code only uses the graphics API from
+animation by ``dt`` seconds. ``store`` (persist.store.Store, or None) lets a
+scene read and save its own section of the state document. The optional ``set_sensors(values)`` gets the
+whole sensor values dict ({key: (state, unit, t)}) whenever it changes. Scene code only uses the graphics API from
 ``scenes._dio`` (real ``displayio`` on the MatrixPortal, ``virtual_matrix``
 on the desktop), so the same files run in the simulator and on hardware.
 

@@ -1,2 +1,4 @@
 adafruit-blinka-displayio
 adafruit-circuitpython-imageload
+# tools/pull_state.py
+pyserial
