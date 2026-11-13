@@ -231,6 +231,7 @@ The water animation, the behaviors, the zaps, the eel flicker, the text panels a
 
 **M1: CO2 → saturation.**
 - `co2_level`, `desaturate`, `set_saturation` and `PondColors` with the water slots. Remove `set_brightness` and the brightness steps.
+  - Done: `saturation_step(level)` maps the level, and `PondColors.set_step` writes the 14 slots (6 water + 8 creature) only on a change. On the desktop at 2200 ppm, kohaku red stays distinct from white. **On the panel the colors look good, water included, so `DESATURATE_WATER` stays on.**
 - *Check:*
   - In the simulator, +/- through 800–2000 ppm takes the pond from full color to nearly gray. Kohaku red and white stay distinguishable at the lowest step.
   - On the panel, the water's desaturation is visible and doesn't band. If it does, set `DESATURATE_WATER = False` and note why here.
