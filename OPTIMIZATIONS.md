@@ -265,7 +265,7 @@ Tuning runs, same setup:
 - Wandering koi save nothing visible, since steering is ~0.4 ms per koi and the
   spine ~5 ms either way.
 - 3 × 3 boids saves ~16 ms (~0.75 ms per boid at perception 10), but 3 boids
-  don't read as a school. Kept at 3 × 10; revisit after M4's float spine,
+  don't read as a school. Kept at 3 × 10; revisit after M3.5's float spine,
   which targets the ~15 ms the 3 koi cost.
 
 `bench_flock.py` on the board: physics only (render off), ms per frame.
@@ -299,4 +299,60 @@ Tuning runs, same setup:
 - **The koi spine is the real cost:** ~4.6–5 ms per koi per frame in
   `set_state`, against ~0.4 ms of steering. The 3 koi in the pond cost ~15 ms
   of the ~52 ms physics. This is the `Vector`-allocating `CreatureSpine.move`
-  that M4 replaces with the float spine.
+  that M3.5 replaces with the float spine.
+
+### M3.5: float spine
+
+`CreatureSpine` keeps its joints in flat `jx`/`jy` lists and each joint's unit
+direction in `ux`/`uy`, and overrides `set_state`: one `sqrt` per joint and no
+`Vector`s. The angle limit is a dot product against `cos(angle_constraint)`;
+the clamp rotates by the precomputed cos/sin, so the spine does no trig at all.
+`move(Vector)` is a thin wrapper, so `CircleBehavior` still works.
+
+- Same result as the old spine: on a 300-frame path with tight turns, with
+  and without the limit, the joints match the `Vector` version to ~1e-13 px.
+- Desktop `bench_flock.py` (CPython, only a rough guide): koi total at n = 24
+  0.19 → 0.09 ms, n = 32 0.24 → 0.12 ms, about half.
+Pond on the board, same setup as M3 (3 koi, 3 × 10 boids, readout shown).
+`DEBUG` stats over 3 lines:
+
+| Setup | FPS | Physics (ms) | Render (ms) | Net avg / max (ms) | Refresh (ms) |
+| ----- | --- | ------------ | ----------- | ------------------ | ------------ |
+| M3 (for comparison) | 10.1–11.0 | 52.0–55.6 | 21.0–24.3 | 0.2–3.5 / 50.6 | 15.7–16.2 |
+| M3.5: float spine | 14.1–16.7 | 29.4–35.3 | 14.6–16.8 | 0.2–2.4 / 37.1 | 14.9–16.1 |
+
+- Physics drops by ~20 ms (about −40 %), more than the ~15 ms the 3 koi
+  spines cost in M3. The rest is probably less garbage collection, now that
+  the spine creates no `Vector`s.
+- Render drops by ~6 ms. `Fish.render` reads the flat lists and does the
+  square fill inline, with no `Vector` joints and no helper call per joint.
+- One frame had 37.1 ms of net, a one-off spike like the 50.6 ms one in M3.
+
+`bench_flock.py` on the board, same columns as the M3 table:
+
+| Flock | n | Steer direct | Steer grid | Steer direct, all | Steer grid, all | Total direct | Total grid |
+| ----- | - | ------------ | ---------- | ----------------- | --------------- | ------------ | ---------- |
+| koi   | 4  | 1.33  | 2.02  | 2.28  | 3.37  | 3.50  | 4.22  |
+| koi   | 8  | 2.43  | 3.51  | 4.41  | 5.88  | 6.38  | 7.53  |
+| koi   | 16 | 5.38  | 6.49  | 10.40 | 11.74 | 12.85 | 14.06 |
+| koi   | 24 | 9.28  | 9.59  | 19.13 | 19.13 | 20.46 | 20.99 |
+| koi   | 32 | 13.91 | 12.81 | 29.88 | 27.77 | 28.92 | 27.89 |
+| boids | 3 × 10 | 11.76 | 14.85 | – | – | 15.34 | 18.93 |
+| boids | 1 × 50 | 27.61 | 21.13 | – | – | 31.51 | 25.06 |
+
+- **The spine is ~9× cheaper:** total minus steer (the move loop plus
+  `set_state`) is ~0.5 ms per koi per frame, down from ~4.6 ms in M3 (n = 4:
+  2.2 vs 18.5 ms; n = 32: 15.0 vs 142.9 ms). Koi totals drop from 20.2 to
+  3.5 ms at n = 4 and from 38.6 to 6.4 ms at n = 8.
+- **Steering is now the bigger half** of the koi cost at every size (e.g.
+  9.3 of 20.5 ms at n = 24, and the steer-all column is the larger share from
+  n = 16 on). The next koi gains are in `FlockingBehavior._steer`, not the
+  spine.
+- **The crossover is unchanged:** direct wins below 24, the two are even at
+  24, and the grid edges ahead at 32. `grid_min_boids` stays at 24.
+- **Budget for M4+:** ~20 fish in one flock would cost ~17 ms of physics
+  (interpolating between n = 16 and 24), against ~140 ms with the old spine.
+- The 1 × 50 boid rows match M3 (27.6 vs 27.5 ms direct steer). The 3 × 10
+  rows are ~2.3 ms slower than M3's (11.8 vs 9.4 ms) although the boid code
+  didn't change in M3.5 and the bench is seeded. Unexplained; worth a re-run
+  before reading anything into it.

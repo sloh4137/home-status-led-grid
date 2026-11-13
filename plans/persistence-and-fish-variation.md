@@ -178,7 +178,7 @@ A child usually keeps the parent's colors but always gets new spots. A child of 
 ### Generic body — `creatures/spine_creature.py`
 Replaces `Fish`. It is built from `(species, genome)`, draws the width profile from the species, then the spots, then the parts. `fish.py` is removed once the koi has been ported to it.
 
-- **Spine update with plain floats.** For ~20 fish, the spine is likely to cost more than any neighbour search. Today the behaviors push state through the default `Creature.set_state`, which calls `CreatureSpine.move(Vector)`. That allocates several `Vector`s per joint per frame and calls `heading()`/`from_angle()` (trig) per joint. At ~20 fish × ~10 joints, that's thousands of allocations a frame.
+- **Spine update with plain floats** (M3.5, in `CreatureSpine` in `creatures/spine.py`, so `spine_creature.py` inherits it). For ~20 fish, the spine is likely to cost more than any neighbour search; the M3 bench measured ~5 ms per koi per frame in `set_state`, against ~0.4 ms of steering. Today the behaviors push state through the default `Creature.set_state`, which calls `CreatureSpine.move(Vector)`. That allocates several `Vector`s per joint per frame and calls `heading()`/`from_angle()` (trig) per joint. At ~20 fish × ~10 joints, that's thousands of allocations a frame.
   - Override `set_state` and keep the joints in flat `jx`/`jy` lists.
   - Follow the leader with `dx, dy = prev - cur`, `d = sqrt(dx² + dy²)`, `cur = prev - (dx, dy) · link / d`. That's one `sqrt` per joint and no allocations.
   - Keep the angle constraint, but don't compute it with angles. Compare the dot product of consecutive link directions with `cos(angle_limit)`, and only fall back to rotating (trig) when a joint goes past the limit, which is rare when swimming smoothly.
@@ -291,9 +291,20 @@ Example: a lightning fish that appears only while the washing machine is running
   - Repeat the comparison with 3 × 10 forced onto the grid, to confirm the direct loop is the faster choice there.
   - Wandering koi curve smoothly, turn back before the walls, and never get stuck in a corner.
 
+**M3.5: Float spine.**
+- Do the "Spine update with plain floats" item (see Generic body) in `CreatureSpine` (`creatures/spine.py`), on its own, before any species work, so its gain can be measured cleanly against the M3 numbers.
+  - Joints in flat `jx`/`jy` lists. A `set_state` override does follow-the-leader with one `sqrt` per joint and no allocations.
+  - The angle limit uses the dot product against `cos(angle_limit)`, with trig only when a joint goes past it.
+  - `Fish.render` reads `jx`/`jy` instead of `Vector` joints.
+  - `move(Vector)` stays as a thin wrapper over the float update, so `CircleBehavior` and `example_fish_scene` keep working.
+- *Check:*
+  - `bench_flock.py` on the board: the koi totals drop well below the M3 table (20.2 ms at n = 4, 38.6 ms at n = 8, direct). Record the new rows in `OPTIMIZATIONS.md`.
+  - Pond `DEBUG` physics is recorded against M3's 51–56 ms.
+  - The koi look and swim the same, including the angle limit on tight turns. `example_fish_scene` still runs.
+
 **M4: Species table + generic body.**
-- Add `species.py` with `KOI` only, and `spine_creature.py`. Port the koi and remove `fish.py`. Use the float spine `set_state`. `Species` already takes `lifecycle` and `persist` (both default `True`), for the future special fish.
-- *Check:* the pond looks and performs the same as before.
+- Add `species.py` with `KOI` only, and `spine_creature.py` on top of the M3.5 `CreatureSpine`. Port the koi and remove `fish.py`. `Species` already takes `lifecycle` and `persist` (both default `True`), for the future special fish.
+- *Check:* the pond looks and performs the same as after M3.5.
 
 **M5: Shared colors + CO2 brightness.**
 - Add `colors.py` and the `scene.set_sensors` hook. Creatures use the shared slots.
@@ -345,7 +356,7 @@ Example: a lightning fish that appears only while the washing machine is running
 - **Modified:**
   - `src/app.py`: settings load, dirty marking, `Store.tick`, `DUMP STATE`, `set_sensors`
   - `src/scenes/pond.py`: builds a `Pond` from the document
-  - `src/creatures/spine.py`: float joints and `set_state` (or folded into `spine_creature.py`)
+  - `src/creatures/spine.py`: float joints and `set_state` (M3.5)
   - `src/behaviors/flocking.py`: built on `SwimBehavior`, `grid_min_boids`, merged neighbour loop, distance check
   - `src/config.py`: `clamped_int`
   - `src/hardware/code.py`: `NvmBackend`, import, dump
