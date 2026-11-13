@@ -3,6 +3,8 @@ Scene with procedural generated fish
 """
 
 from _dio import dio
+from creatures import colors
+from creatures.colors import CreatureColors
 from creatures.fish_boid import FishBoid
 from creatures.species import KOI, KOI_WANDER as KOI_WANDER_MOTION
 from creatures.spine_creature import SpineCreature
@@ -21,10 +23,9 @@ POND_BRIGHTNESS = 0.1  # 0.0-1.0, applied to the pond sprite's palette
 
 # Everything draws into one canvas sharing the pond sprite's palette, so displayio
 # composites a single layer. The sprite only uses indices 0-5 of its 16, so creature
-# colors go in the free indices after them.
-KOI_COLOR = 6
-BOID_COLOR = 7
-KOI_RGB = 0x2E9BFF
+# colors go in the free indices after them (creatures/colors.py).
+KOI_COLOR = colors.KOI_BLUE
+BOID_COLOR = colors.BOID
 
 # Background boids: independent flocks of BOIDS_PER_FLOCK, each small enough for
 # the direct neighbour loop (under grid_min_boids)
@@ -84,13 +85,14 @@ def load_pond_water(width, height):
 
 def create_scene(width=64, height=64):
     """
-    Build the scene. Returns (group, update(dt)) for the main loop.
+    Build the scene. Returns (group, update(dt), set_sensors(values)) for the
+    main loop. set_sensors gets the whole sensor values dict whenever it
+    changes; the CO2 level dims the creatures (not the water).
     """
 
     group = dio.Group()
     palette, update_pond, draw_pond = load_pond_water(width, height)
-    palette[KOI_COLOR] = KOI_RGB
-    palette[BOID_COLOR] = FishBoid.COLOR
+    creature_colors = CreatureColors(palette)
     canvas = make_canvas(group, width, height, palette)
 
     # Starting fish as (species, position, size percent)
@@ -159,4 +161,4 @@ def create_scene(width=64, height=64):
         for flock in boid_flocks:
             flock.update(dt)
 
-    return group, update
+    return group, update, creature_colors.set_sensors

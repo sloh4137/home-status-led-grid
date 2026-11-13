@@ -19,6 +19,10 @@ are loaded and applied here, menu actions mark the store dirty, and
 ``tick`` lets it save at most once per PERSIST_SECONDS. The DUMP STATE menu
 item prints the document on the console, and a ``store.notice`` from loading
 (BAD STATE.JSON) replaces the sensor status line for NOTICE_SECONDS.
+
+A scene's ``create_scene`` may return a third element, ``set_sensors(values)``.
+It gets the whole sensor values dict at startup, on every sensor swap and
+whenever ``sensors.changed``, so new sensor-driven effects need no wiring here.
 """
 
 from home.readout import sensor_lines, status_message
@@ -52,7 +56,12 @@ class App:
         # Shown from the first tick on, so a slow WiFi connect doesn't eat it
         self._notice = store.notice if store else None
         self._notice_until = None
-        self.group, self._update_scene = scene_module.create_scene(width, height)
+        scene = scene_module.create_scene(width, height)
+        self.group, self._update_scene = scene[0], scene[1]
+        # Optional third element: set_sensors(values), called with the whole
+        # values dict whenever it changes. The scene decides what each value
+        # means (e.g. CO2 -> creature brightness).
+        self._scene_sensors = scene[2] if len(scene) > 2 else None
         # Sensor readout anchored to the bottom edge
         self.sensor_panel = TextPanel(
             self.group, width, height - panel_height(SENSOR_LINES), SENSOR_LINES
@@ -128,6 +137,8 @@ class App:
         self._started = now
         self._message = status_message(sensors, now, now)
         self.sensor_panel.set_lines(sensor_lines(sensors.values, self._message))
+        if self._scene_sensors:
+            self._scene_sensors(sensors.values)
 
     def tick(self, dt, now):
         self._update_menu(now)
@@ -144,6 +155,8 @@ class App:
         # Only build strings when something changed; set_lines also skips
         # redrawing when the text comes out the same.
         if sensors.changed or message != self._message:
+            if sensors.changed and self._scene_sensors:
+                self._scene_sensors(sensors.values)
             sensors.changed = False
             self._message = message
             self.sensor_panel.set_lines(sensor_lines(sensors.values, message))

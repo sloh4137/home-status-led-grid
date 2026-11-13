@@ -309,6 +309,7 @@ Example: a lightning fish that appears only while the washing machine is running
 
 **M5: Shared colors + CO2 brightness.**
 - Add `colors.py` and the `scene.set_sensors` hook. Creatures use the shared slots.
+  - Done: `create_scene` may return a third element, `set_sensors(values)`. `App` calls it at startup, on a sensor swap and whenever `sensors.changed`. `CreatureColors` owns slots 6–13 (14–15 reserved) and writes them only when the CO2 step changes, in integer tenths, so full brightness is the exact base RGB. For now there are two slots, `BOID` and `KOI_BLUE`. M6 replaces the blue with the koi variants. `FakeSensors` CO2 now sweeps from 400 to 2200 ppm over 4 minutes, and `run.py --fake-sensors` uses it even with `HA_URL` set. There, `+` / `-` set CO2 by hand in 100 ppm steps and `0` resumes the sweep. The step rounds halves up, because `round()` rounds half to even and made the steps uneven. On the desktop, a seeded 200-frame run of the pond is pixel-identical to M4. On the board, `DEBUG` shows 14.4–16.1 fps and 30.6–35.4 ms physics, the same as M4 (OPTIMIZATIONS.md "M5").
 - *Check:* `FakeSensors` drifting CO2 dims and brightens the fish in visible steps, and the water is unchanged. Frame time is unchanged.
 
 **M6: Color variants + spots.**

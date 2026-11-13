@@ -398,3 +398,21 @@ as M3.5, `DEBUG` stats over 4 lines:
   that the earlier rows left more fragmented, and three small flocks
   allocate more separate lists than one big one. Re-running only the boid
   rows on a fresh boot would tell.
+
+### M5: shared colors + CO2 brightness
+
+The creature colors moved to shared palette slots (`creatures/colors.py`),
+and the CO2 level rewrites them only when its brightness step changes (two
+palette writes today), so a frame does no color work. Pond on the board,
+same setup as M4, `DEBUG` stats over 5 lines:
+
+| Setup | FPS | Physics (ms) | Render (ms) | Net avg / max (ms) | Refresh (ms) |
+| ----- | --- | ------------ | ----------- | ------------------ | ------------ |
+| M4 (for comparison) | 14.5–16.2 | 30.7–33.5 | 13.0–18.8 | 0.2–2.1 / 8.6 | 14.5–16.6 |
+| M5: shared colors + CO2 brightness | 14.4–16.1 | 30.6–35.4 | 11.1–17.8 | 0.2–2.0 / 8.6 | 14.8–16.7 |
+
+- Same as M4 within noise, as expected; on the desktop a seeded 200-frame
+  run at full brightness is pixel-identical to M4.
+- The two fastest-render lines (11.1, 11.3 ms) are also the two slowest
+  physics lines (35.1, 35.4 ms), so the split between the two looks noisy
+  from line to line, while their sum stays at ~46–48 ms.
