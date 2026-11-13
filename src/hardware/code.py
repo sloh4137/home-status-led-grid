@@ -43,9 +43,17 @@
 # NO HA CFG if setup failed, or HA OFFLINE after 3 intervals without a read.
 #
 # Buttons: UP / DOWN open the menu, a tap moves the highlight and holding
-# either for ~0.6 s selects. Items: ROTATE 90, SENSORS ON/OFF, HIDE MENU.
-# The rotation and SENSORS ON/OFF are saved to microcontroller.nvm at most
-# once per PERSIST_SECONDS, so a change made just before a power loss is lost.
+# either for ~0.6 s selects. Items: ROTATE 90, SENSORS ON/OFF, DUMP STATE,
+# HIDE MENU. The rotation and SENSORS ON/OFF are saved to microcontroller.nvm
+# at most once per PERSIST_SECONDS, so a change made just before a power loss
+# is lost.
+#
+# Editing the state: at startup (and on DUMP STATE) the board prints its
+# state as JSON between ---STATE BEGIN--- / ---STATE END--- on the serial
+# console (tools/pull_state.py saves it to a file). Put an edited copy on the
+# drive as CIRCUITPY/state.json (./deploy.sh --state FILE) and the auto-reload
+# imports it, once: the board remembers the file's checksum, so the file can
+# stay on the drive. A broken file shows BAD STATE.JSON and changes nothing.
 # RESET is a hardware reset and only reboots; code can't read it.
 #
 # Hardware note: the 64x64 panel needs the Address-E solder jumper on the
@@ -75,6 +83,7 @@ WIDTH, HEIGHT = 64, 64
 FPS = 30
 DEBUG = True  # time physics, render, net and refresh; print them to the serial console
 STATS_EVERY = 30  # frames between timing printouts on the serial console
+IMPORT_PATH = "/state.json"  # CIRCUITPY/state.json, imported once at startup
 
 # ---------------------------------------------------------------- matrix setup
 displayio.release_displays()
@@ -116,7 +125,10 @@ def set_rotation(degrees):
 settings = load_settings()
 print("nvm: %d bytes" % len(microcontroller.nvm))
 store = Store(
-    NvmBackend(microcontroller.nvm), persist_seconds(settings), time.monotonic()
+    NvmBackend(microcontroller.nvm),
+    persist_seconds(settings),
+    time.monotonic(),
+    import_path=IMPORT_PATH,
 )
 app = App(
     WIDTH,
@@ -130,6 +142,7 @@ app = App(
 )
 display.root_group = app.group
 display.refresh()  # show WIFI... while connecting, which can take seconds
+store.dump()  # the state after loading and importing, for tools/pull_state.py
 
 
 # ---------------------------------------------------------------- HA

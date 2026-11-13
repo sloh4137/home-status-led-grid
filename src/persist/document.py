@@ -10,11 +10,17 @@ Loading puts the defaults first, then overlays each known field that is
 valid, so old saves keep working when fields are added. Unknown keys and
 invalid values are dropped, with the reason printed on the serial console.
 An unparseable document means defaults.
+
+An imported file (CIRCUITPY/state.json) replaces the saved document per
+section: see ``merge``.
 """
 
 import json
 
 VERSION = 1
+
+# Top-level sections, each replaced as a whole by an import
+SECTIONS = ("settings",)
 
 ROTATIONS = (0, 90, 180, 270)
 DEFAULT_SETTINGS = {"rotation": 0, "sensors_on": True}
@@ -77,8 +83,41 @@ def build(sections):
     return doc
 
 
+def merge(saved, imported):
+    """The saved document with each section present in ``imported`` replaced
+    by the imported one: a file with only ``settings`` keeps the saved pond,
+    and one with only ``pond`` keeps the saved settings."""
+    doc = build({})
+    if saved:
+        for name in SECTIONS:
+            if name in saved:
+                doc[name] = saved[name]
+    for name, section in imported.items():
+        if name in SECTIONS:
+            doc[name] = section
+        elif name != "v":
+            _drop("state", name, section, "unknown section")
+    return doc
+
+
 def dumps(doc, pretty=False):
     if pretty:
-        # CPython only; CircuitPython's json has no indent
-        return json.dumps(doc, indent=2) + "\n"
+        return _pretty(doc, "") + "\n"
     return json.dumps(doc)
+
+
+def _pretty(value, indent):
+    """Indented JSON. CircuitPython's json has no ``indent``, so this is done
+    by hand. Objects open up one key per line; a list puts each item on its
+    own line, compact, so each fish of the pond reads as one line."""
+    inner = indent + "  "
+    if isinstance(value, dict) and value:
+        items = [
+            inner + json.dumps(key) + ": " + _pretty(item, inner)
+            for key, item in value.items()
+        ]
+        return "{\n" + ",\n".join(items) + "\n" + indent + "}"
+    if isinstance(value, (list, tuple)) and value:
+        items = [inner + json.dumps(item) for item in value]
+        return "[\n" + ",\n".join(items) + "\n" + indent + "]"
+    return json.dumps(value)

@@ -4,11 +4,14 @@
 #   src/hardware/code.py        ->  D:\code.py
 #   src/hardware/settings.toml  ->  D:\settings.toml  (if present; holds WiFi + HA token)
 #   src/*                       ->  D:\src\   (minus __pycache__, simulator/, run.py, hardware/)
+#   FILE (--state FILE)         ->  D:\state.json  (imported by the board at its next start)
 #
-# Usage:  ./deploy.sh [--clean] [--no-code] [--no-settings]
+# Usage:  ./deploy.sh [--clean] [--no-code] [--no-settings] [--state FILE]
 #   --clean        also delete files in D:\src\ that no longer exist in src/
 #   --no-code      skip copying code.py (only update D:\src\)
 #   --no-settings  skip copying settings.toml (keep the board's own copy)
+#   --state FILE   copy FILE (e.g. from tools/pull_state.py or the simulator's
+#                  state.json) to CIRCUITPY/state.json
 #
 # Override the drive letter / mount point with DRIVE=E ./deploy.sh
 # or MOUNT=/some/path ./deploy.sh.
@@ -19,17 +22,27 @@ DRIVE="${DRIVE:-D}"
 MOUNT="${MOUNT:-/mnt/$(echo "$DRIVE" | tr '[:upper:]' '[:lower:]')}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+USAGE="Usage: $0 [--clean] [--no-code] [--no-settings] [--state FILE]"
 CLEAN=()
 COPY_CODE=1
 COPY_SETTINGS=1
-for arg in "$@"; do
-    case "$arg" in
+STATE=""
+while (( $# )); do
+    case "$1" in
         --clean)   CLEAN=(--delete) ;;
         --no-code) COPY_CODE=0 ;;
         --no-settings) COPY_SETTINGS=0 ;;
-        *) echo "Unknown option: $arg" >&2; echo "Usage: $0 [--clean] [--no-code] [--no-settings]" >&2; exit 2 ;;
+        --state)
+            [[ $# -ge 2 ]] || { echo "--state needs a FILE" >&2; echo "$USAGE" >&2; exit 2; }
+            STATE="$2"; shift ;;
+        *) echo "Unknown option: $1" >&2; echo "$USAGE" >&2; exit 2 ;;
     esac
+    shift
 done
+if [[ -n "$STATE" && ! -f "$STATE" ]]; then
+    echo "error: --state file $STATE not found" >&2
+    exit 2
+fi
 
 # WSL doesn't automount removable drives, so mount the board if needed.
 if [[ ! -d "$MOUNT" ]] || [[ -z "$(ls -A "$MOUNT" 2>/dev/null)" ]]; then
@@ -67,6 +80,13 @@ elif [[ -f "$SETTINGS" ]]; then
 else
     echo "warning: $SETTINGS not found -- copy src/hardware/settings.toml.example there and fill it in." >&2
     echo "         Leaving the board's settings.toml as is." >&2
+fi
+
+# Also before code.py, so the reload imports it. The board only imports a
+# file it hasn't imported before (it remembers the checksum).
+if [[ -n "$STATE" ]]; then
+    echo "Copying $STATE to state.json..."
+    "${RSYNC[@]}" "$STATE" "$MOUNT/state.json"
 fi
 
 if (( COPY_CODE )); then

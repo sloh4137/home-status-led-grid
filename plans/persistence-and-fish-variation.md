@@ -44,6 +44,7 @@ The background boids stay ambient, with flat arrays and no genome (see LEARNINGS
   - An unparseable document means defaults.
 - Size: about 120 bytes per fish × 20 fish + settings ≈ 2.5–3 KB of compact JSON.
 - Pretty-printed (indented) when dumped or written to the desktop file, so it's easy to edit. Compact in nvm.
+  - CircuitPython's `json.dumps` has no `indent`, so `document.dumps(pretty=True)` is a small hand-written printer (M2). Objects get one key per line, and each list item is one compact line, so each fish will read as one line.
 
 ### Store with dirty flag — `persist/store.py`
 - `Store(backend, interval_s)` has `load()`, `mark_dirty()` and `tick(now)`.
@@ -68,6 +69,7 @@ The background boids stay ambient, with flat arrays and no genome (see LEARNINGS
 - At startup, if `/state.json` exists, the board reads it and computes its CRC.
   - Same as `import_crc` in nvm → already imported, ignored. The file can stay on the drive without resetting the pond every boot.
   - Different → parse and validate it like any load, then apply it. The imported document replaces the saved one **per section**: a file with only `settings` keeps the saved pond, and a file with only `pond` keeps the saved settings. The board then marks the store dirty with the new `import_crc`.
+    - Within a section nothing is merged: a key missing from the imported `settings` gets its default, not the saved value (`document.merge`, M2). Unknown top-level sections are dropped with a printed reason.
   - Unparseable → print the error, keep the saved state, and don't record the CRC, so a fixed file is picked up next time. Also show `BAD STATE.JSON` in the sensor panel's status line for a few seconds.
 - The import CRC is saved in the same nvm write as the imported state. If power is lost before that save, the file is simply imported again next boot.
 - The code can't write to CIRCUITPY while the PC can, so the board never deletes or rewrites the file. This keeps the USB mode unchanged, with no `boot.py`, and `deploy.sh` keeps working.

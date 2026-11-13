@@ -16,7 +16,9 @@ desktop. The whole group rotates, so the text panels turn with the scene.
 
 ``store`` (persist.store.Store, optional) holds the saved menu settings: they
 are loaded and applied here, menu actions mark the store dirty, and
-``tick`` lets it save at most once per PERSIST_SECONDS.
+``tick`` lets it save at most once per PERSIST_SECONDS. The DUMP STATE menu
+item prints the document on the console, and a ``store.notice`` from loading
+(BAD STATE.JSON) replaces the sensor status line for NOTICE_SECONDS.
 """
 
 from home.readout import sensor_lines, status_message
@@ -26,6 +28,7 @@ from ui.menu import Menu
 from ui.text_panel import TextPanel, panel_height
 
 SENSOR_LINES = 3
+NOTICE_SECONDS = 8
 
 
 class App:
@@ -46,6 +49,9 @@ class App:
         self._set_rotation = set_rotation
         self.store = store
         saved = settings_from(store.load() if store else None)
+        # Shown from the first tick on, so a slow WiFi connect doesn't eat it
+        self._notice = store.notice if store else None
+        self._notice_until = None
         self.group, self._update_scene = scene_module.create_scene(width, height)
         # Sensor readout anchored to the bottom edge
         self.sensor_panel = TextPanel(
@@ -60,13 +66,14 @@ class App:
         if store:
             store.provide("settings", self.settings)
 
-        self.menu = Menu(
-            [
-                (lambda: "ROTATE 90", self._rotate),
-                (self._sensors_label, self._toggle_sensors),
-                (lambda: "HIDE MENU", self._hide_menu),
-            ]
-        )
+        items = [
+            (lambda: "ROTATE 90", self._rotate),
+            (self._sensors_label, self._toggle_sensors),
+        ]
+        if store:
+            items.append((lambda: "DUMP STATE", store.dump))
+        items.append((lambda: "HIDE MENU", self._hide_menu))
+        self.menu = Menu(items)
         # Menu on top of everything, anchored to the top edge; hidden until
         # the first button press
         self.menu_panel = TextPanel(self.group, width, 0, len(self.menu.items))
@@ -127,6 +134,13 @@ class App:
         sensors = self.sensors
         sensors.poll(now)
         message = status_message(sensors, now, self._started)
+        if self._notice:
+            if self._notice_until is None:
+                self._notice_until = now + NOTICE_SECONDS
+            if now < self._notice_until:
+                message = self._notice
+            else:
+                self._notice = None
         # Only build strings when something changed; set_lines also skips
         # redrawing when the text comes out the same.
         if sensors.changed or message != self._message:

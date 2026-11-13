@@ -1,10 +1,12 @@
 """Throttled saving of the state document, and where it is saved.
 
-    store = Store(NvmBackend(microcontroller.nvm), persist_seconds(settings), now)
-    doc = store.load()                       # parsed document, or None
+    store = Store(NvmBackend(microcontroller.nvm), persist_seconds(settings), now,
+                  import_path="/state.json")
+    doc = store.load()                       # parsed document (import applied), or None
     store.provide("settings", app.settings)  # called at save time for that section
     store.mark_dirty()                       # after any change worth keeping
     store.tick(now)                          # once per frame; saves at most once per interval
+    store.dump()                             # print the document between marker lines
 
 Callers only set the dirty flag and never block on flash. ``tick`` builds the
 document from the providers and writes it when dirty and at least
@@ -15,6 +17,16 @@ Backends have ``read() -> text or None``, ``write(text)`` and ``pretty``:
 
 - NvmBackend: microcontroller.nvm on the board (see the nvm notes below).
 - FileBackend: a JSON file on the desktop, written to PATH.tmp then renamed.
+
+Import (board only, ``import_path``): ``load`` also reads CIRCUITPY/state.json
+if it exists. A file whose checksum equals the backend's ``import_crc`` was
+already imported and is ignored, so it can stay on the drive. Otherwise it is
+parsed like any load and replaces the saved document per section
+(document.merge), and the store is marked dirty so the next save records the
+new ``import_crc`` together with the imported state. A broken file keeps the
+saved state, isn't recorded (so a fixed file is picked up next time) and sets
+``notice`` for the status line. The board never deletes or rewrites the file:
+code can't write to CIRCUITPY while the PC can.
 """
 
 import struct
@@ -28,11 +40,19 @@ except ImportError:
     _crc32 = None
 
 
+DUMP_BEGIN = "---STATE BEGIN---"
+DUMP_END = "---STATE END---"
+BAD_IMPORT = "BAD STATE.JSON"
+
+
 class Store:
-    def __init__(self, backend, interval_s, now):
+    def __init__(self, backend, interval_s, now, import_path=None):
         self.backend = backend
         self.interval_s = interval_s
+        self.import_path = import_path
         self.dirty = False
+        # A short message for the status line after load (BAD STATE.JSON), or None
+        self.notice = None
         self._last_save = now
         self._sections = {}
 
@@ -42,8 +62,38 @@ class Store:
         except (OSError, RuntimeError) as e:
             # e.g. "NVS Error": boot with defaults rather than not at all
             print("state: load failed (%s)" % e)
-            return None
-        return document.parse(text)
+            text = None
+        doc = document.parse(text)
+        if self.import_path:
+            doc = self._import(doc)
+        return doc
+
+    def _import(self, doc):
+        path = self.import_path
+        try:
+            with open(path, "rb") as f:
+                data = f.read()
+        except OSError:
+            return doc  # no file to import
+        crc = checksum(data)
+        backend = self.backend
+        if crc == getattr(backend, "import_crc", None):
+            print("state: %s already imported" % path)
+            return doc
+        try:
+            text = data.decode()
+        except UnicodeError:
+            print("state: not UTF-8 text")
+            text = None
+        imported = document.parse(text)
+        if imported is None:
+            print("state: %s not imported; keeping the saved state" % path)
+            self.notice = BAD_IMPORT
+            return doc
+        print("state: imported %s" % path)
+        backend.import_crc = crc
+        self.dirty = True
+        return document.merge(doc, imported)
 
     def provide(self, name, section):
         """Register ``section()``, which returns the dict saved under ``name``."""
@@ -61,11 +111,22 @@ class Store:
         if self.dirty:
             self.save(now)
 
+    def build_document(self):
+        """The current document, built from the providers."""
+        return document.build({name: f() for name, f in self._sections.items()})
+
+    def dump(self):
+        """Print the current document, pretty, between marker lines on the
+        console (tools/pull_state.py looks for them)."""
+        print(DUMP_BEGIN)
+        print(document.dumps(self.build_document(), pretty=True), end="")
+        print(DUMP_END)
+
     def save(self, now):
         # Even a failed write waits a full interval before the next try
         self._last_save = now
         t = time.monotonic_ns()
-        doc = document.build({name: f() for name, f in self._sections.items()})
+        doc = self.build_document()
         text = document.dumps(doc, self.backend.pretty)
         try:
             self.backend.write(text)

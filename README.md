@@ -62,6 +62,7 @@ the MatrixPortal closed. Then:
 ./deploy.sh                # code.py, settings.toml and src/ to the board
 ./deploy.sh --no-settings  # keep the board's own settings.toml
 ./deploy.sh --clean        # also delete files removed from src/
+./deploy.sh --state FILE   # also copy FILE to CIRCUITPY/state.json (see below)
 ```
 
 `deploy.sh` mounts the drive under WSL (`DRIVE=E` or `MOUNT=/path` to override).
@@ -82,6 +83,7 @@ reboots the board and code can't see it.
 |---|---|
 | `ROTATE 90` | Turns the display 90° clockwise (0 → 90 → 180 → 270 → 0) |
 | `SENSORS ON/OFF` | Shows or hides the readout (values keep updating while hidden) |
+| `DUMP STATE` | Prints the saved state on the serial console (see below) |
 | `HIDE MENU` | Closes the menu |
 
 The rotation and `SENSORS ON/OFF` are saved and come back after a reboot: on the
@@ -90,6 +92,30 @@ board in `microcontroller.nvm`, in the simulator in `state.json` at the repo roo
 `PERSIST_SECONDS` (`settings.toml`, 10–3600, default 60) and only after a change,
 so a change made within that time before a power loss is lost. The simulator
 also saves when its window closes.
+
+### Editing the board's state
+
+Edits are file-based and take effect at the next start:
+
+1. **Pull.** At startup, and on `DUMP STATE`, the board prints its state as JSON
+   between `---STATE BEGIN---` and `---STATE END---` on the serial console.
+   `python3 tools/pull_state.py PORT [-o FILE]` waits up to 30 s for it (press
+   RESET or select `DUMP STATE`) and writes it to `FILE` (default `state.json`).
+   On WSL2 the serial port isn't visible without `usbipd`, so run it with
+   Windows Python against `COMn`, or copy the text from any serial terminal.
+2. **Edit** the file.
+3. **Push.** `./deploy.sh --state FILE`, or drag the file onto CIRCUITPY as
+   `state.json`. Copying it makes CircuitPython auto-reload, and the board
+   imports it.
+
+The board remembers the checksum of the file it imported, so the file can stay
+on the drive: it isn't re-imported on every boot, and later menu changes still
+stick. Each top-level section in the file replaces the saved one, so a file
+with only `"settings"` leaves the rest alone; keys missing inside a section
+get their defaults. A file that doesn't parse shows `BAD STATE.JSON` for a few
+seconds and changes nothing (the reason is printed on the console). The
+simulator's `state.json` uses the same format, so it can be pushed to the board
+as is, and a pulled file runs in the simulator with `run.py --state FILE`.
 
 ## Performance
 
