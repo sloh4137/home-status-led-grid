@@ -16,6 +16,7 @@
 #       creatures/
 #       graphics/
 #       home/
+#       persist/
 #       scenes/
 #       sprites/
 #       ui/
@@ -37,13 +38,15 @@
 #   HA_TOKEN          HA -> your profile -> Security -> Long-lived access tokens
 #   HA_CO2_ENTITY, HA_TEMPERATURE_ENTITY, HA_HUMIDITY_ENTITY   entity IDs
 #   HA_POLL_SECONDS   1-60, default 5
+#   PERSIST_SECONDS   10-3600, default 60: minimum seconds between state saves
 # The readout shows WIFI... while connecting, then the values, or NO WIFI /
 # NO HA CFG if setup failed, or HA OFFLINE after 3 intervals without a read.
 #
 # Buttons: UP / DOWN open the menu, a tap moves the highlight and holding
 # either for ~0.6 s selects. Items: ROTATE 90, SENSORS ON/OFF, HIDE MENU.
-# Settings aren't saved and reset on reboot. RESET is a hardware reset and
-# only reboots; code can't read it.
+# The rotation and SENSORS ON/OFF are saved to microcontroller.nvm at most
+# once per PERSIST_SECONDS, so a change made just before a power loss is lost.
+# RESET is a hardware reset and only reboots; code can't read it.
 #
 # Hardware note: the 64x64 panel needs the Address-E solder jumper on the
 # MatrixPortal closed (middle pad shorted to "8" for Adafruit panels).
@@ -54,15 +57,17 @@ import time
 import board
 import displayio
 import framebufferio
+import microcontroller
 import rgbmatrix
 
 sys.path.insert(0, "/src")
 
 from app import App  # noqa: E402 -- needs /src on sys.path
 from behaviors.flocking import FlockingBehavior  # noqa: E402
-from config import load_settings, poll_seconds  # noqa: E402
+from config import load_settings, persist_seconds, poll_seconds  # noqa: E402
 from home.ha_client import from_settings  # noqa: E402
 from home.no_sensors import NoSensors  # noqa: E402
+from persist.store import NvmBackend, Store  # noqa: E402
 import scenes.pond  # noqa: E402
 from ui.buttons import KeypadButtons  # noqa: E402
 
@@ -108,6 +113,11 @@ def set_rotation(degrees):
 
 
 # ---------------------------------------------------------------- app
+settings = load_settings()
+print("nvm: %d bytes" % len(microcontroller.nvm))
+store = Store(
+    NvmBackend(microcontroller.nvm), persist_seconds(settings), time.monotonic()
+)
 app = App(
     WIDTH,
     HEIGHT,
@@ -116,6 +126,7 @@ app = App(
     time.monotonic(),
     KeypadButtons(),
     set_rotation,
+    store,
 )
 display.root_group = app.group
 display.refresh()  # show WIFI... while connecting, which can take seconds
@@ -158,7 +169,7 @@ def connect_sensors(settings):
         return NoSensors("NO HA CFG")
 
 
-sensors = connect_sensors(load_settings())
+sensors = connect_sensors(settings)
 app.set_sensors(sensors, time.monotonic())
 
 # ---------------------------------------------------------------- timing

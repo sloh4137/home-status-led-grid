@@ -25,6 +25,11 @@ HA_HUMIDITY_ENTITY = "sensor.living_room_humidity"
 # Seconds between reads, 1-60 (clamped; default 5)
 HA_POLL_SECONDS = 5
 
+# Minimum seconds between saves of the menu settings (and later the pond) to
+# microcontroller.nvm on the board / state.json on the desktop. 10-3600
+# (clamped; default 60). Saves only happen when something changed.
+PERSIST_SECONDS = 60
+
 # Other entities this project reads
 WASHER_ENTITY = "sensor.washer_status"
 

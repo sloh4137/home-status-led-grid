@@ -13,9 +13,14 @@ SimButtons or NoButtons). The gestures drive the menu at the top of the screen.
 ``set_rotation(degrees)`` is called by the ROTATE 90 menu item with 0, 90,
 180 or 270: display.rotation on hardware, VirtualDisplay.rotation on the
 desktop. The whole group rotates, so the text panels turn with the scene.
+
+``store`` (persist.store.Store, optional) holds the saved menu settings: they
+are loaded and applied here, menu actions mark the store dirty, and
+``tick`` lets it save at most once per PERSIST_SECONDS.
 """
 
 from home.readout import sensor_lines, status_message
+from persist.document import settings_from
 from ui.buttons import NoButtons
 from ui.menu import Menu
 from ui.text_panel import TextPanel, panel_height
@@ -33,12 +38,14 @@ class App:
         now,
         buttons=None,
         set_rotation=None,
+        store=None,
     ):
         self.width = width
         self.height = height
         self.buttons = buttons or NoButtons()
-        self.rotation = 0
         self._set_rotation = set_rotation
+        self.store = store
+        saved = settings_from(store.load() if store else None)
         self.group, self._update_scene = scene_module.create_scene(width, height)
         # Sensor readout anchored to the bottom edge
         self.sensor_panel = TextPanel(
@@ -46,7 +53,13 @@ class App:
         )
         self.set_sensors(sensors, now)
 
-        self.sensors_on = True
+        self.rotation = 0
+        self._apply_rotation(saved["rotation"])
+        self.sensors_on = saved["sensors_on"]
+        self.sensor_panel.hidden = not self.sensors_on
+        if store:
+            store.provide("settings", self.settings)
+
         self.menu = Menu(
             [
                 (lambda: "ROTATE 90", self._rotate),
@@ -59,11 +72,24 @@ class App:
         self.menu_panel = TextPanel(self.group, width, 0, len(self.menu.items))
         self.menu_panel.hidden = True
 
+    # ------------------------------------------------------------ settings
+    def settings(self):
+        """The ``settings`` section of the saved document."""
+        return {"rotation": self.rotation, "sensors_on": self.sensors_on}
+
+    def _changed(self):
+        if self.store:
+            self.store.mark_dirty()
+
+    def _apply_rotation(self, degrees):
+        self.rotation = degrees
+        if self._set_rotation:
+            self._set_rotation(degrees)
+
     # ------------------------------------------------------------ menu items
     def _rotate(self):
-        self.rotation = (self.rotation + 90) % 360
-        if self._set_rotation:
-            self._set_rotation(self.rotation)
+        self._apply_rotation((self.rotation + 90) % 360)
+        self._changed()
 
     def _sensors_label(self):
         return "SENSORS ON" if self.sensors_on else "SENSORS OFF"
@@ -71,6 +97,7 @@ class App:
     def _toggle_sensors(self):
         self.sensors_on = not self.sensors_on
         self.sensor_panel.hidden = not self.sensors_on
+        self._changed()
 
     def _hide_menu(self):
         self.menu.hide()
@@ -107,3 +134,5 @@ class App:
             self._message = message
             self.sensor_panel.set_lines(sensor_lines(sensors.values, message))
         self._update_scene(dt)
+        if self.store:
+            self.store.tick(now)

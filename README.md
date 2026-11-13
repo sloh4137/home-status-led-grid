@@ -47,6 +47,7 @@ pip install -r requirements.txt
 cd src
 python3 run.py                       # pond scene, reads hardware/settings.toml
 python3 run.py --settings ../other.toml
+python3 run.py --state ../other.json # saved settings (default: ../state.json)
 ```
 
 Keys stand in for the side buttons: **Up / Down** tap, **Enter / Space** hold.
@@ -83,7 +84,12 @@ reboots the board and code can't see it.
 | `SENSORS ON/OFF` | Shows or hides the readout (values keep updating while hidden) |
 | `HIDE MENU` | Closes the menu |
 
-Settings are not saved and reset on reboot.
+The rotation and `SENSORS ON/OFF` are saved and come back after a reboot: on the
+board in `microcontroller.nvm`, in the simulator in `state.json` at the repo root
+(`run.py --state PATH` for another file). A save happens at most once per
+`PERSIST_SECONDS` (`settings.toml`, 10–3600, default 60) and only after a change,
+so a change made within that time before a power loss is lost. The simulator
+also saves when its window closes.
 
 ## Performance
 

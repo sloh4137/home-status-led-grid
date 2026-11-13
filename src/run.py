@@ -3,6 +3,7 @@
     python3 run.py --scene pond
     python3 run.py --scene example_fish_scene --scale 10
     python3 run.py --settings ../my-settings.toml
+    python3 run.py --state ../other-state.json
 
 HA config comes from hardware/settings.toml -- the same file deploy.sh copies
 to the board as CIRCUITPY/settings.toml; --settings points at a different file.
@@ -11,6 +12,11 @@ it shows FakeSensors values.
 
 Keys stand in for the board's side buttons: Up / Down tap, Enter / Space hold
 (select). The first press opens the menu.
+
+Menu settings are saved to --state (default: state.json at the repo root,
+git-ignored) at most once per PERSIST_SECONDS, and once more when the window
+closes. It's the same JSON format as the board's state. Edit it while the
+simulator is stopped; a running simulator overwrites it on its next save.
 
 Renders into a tkinter window (simulator/virtual_matrix.VirtualDisplay) and
 drives the same ``App`` as the MatrixPortal's code.py, so scenes, overlays and
@@ -30,15 +36,17 @@ import time
 
 import simulator.virtual_matrix as vm
 from app import App
-from config import load_settings, poll_seconds
+from config import load_settings, persist_seconds, poll_seconds
 from home.fake_sensors import FakeSensors
 from home.ha_client import from_settings
+from persist.store import FileBackend, Store
 from ui.buttons import SimButtons
 
 # The same file deploy.sh copies to the board as CIRCUITPY/settings.toml
-DEFAULT_SETTINGS = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "hardware", "settings.toml"
-)
+SRC = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_SETTINGS = os.path.join(SRC, "hardware", "settings.toml")
+# The desktop save, git-ignored
+DEFAULT_STATE = os.path.join(os.path.dirname(SRC), "state.json")
 
 SCENES = ("example_fish_scene", "pond")
 
@@ -60,6 +68,11 @@ def main(argv=None):
         "--settings",
         default=DEFAULT_SETTINGS,
         help="settings.toml to read HA config from (default: hardware/settings.toml)",
+    )
+    parser.add_argument(
+        "--state",
+        default=DEFAULT_STATE,
+        help="JSON file to load and save the state in (default: state.json at the repo root)",
     )
     args = parser.parse_args(argv)
     settings = load_settings(args.settings)
@@ -83,10 +96,15 @@ def main(argv=None):
     def set_rotation(degrees):
         display.rotation = degrees
 
-    app = App(args.width, args.height, scene, sensors, now, buttons, set_rotation)
+    store = Store(FileBackend(args.state), persist_seconds(settings), now)
+    app = App(
+        args.width, args.height, scene, sensors, now, buttons, set_rotation, store
+    )
     display.show(app.group)
     display.on_key(buttons.key)
     display.run(app.tick, fps=30)
+    # The window was closed; a desktop "power loss" shouldn't lose changes
+    store.flush(time.monotonic())
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
     settings = load_settings(path)
     settings.get("HA_URL")             # None when missing
     poll_seconds(settings)             # HA_POLL_SECONDS, clamped to 1..60
+    persist_seconds(settings)          # PERSIST_SECONDS, clamped to 10..3600
 
 On CircuitPython the board's CIRCUITPY/settings.toml is read through
 os.getenv() and ``path`` is ignored. On CPython the file at ``path`` is
@@ -16,6 +17,9 @@ import sys
 POLL_DEFAULT = 5
 POLL_MIN = 1
 POLL_MAX = 60
+PERSIST_DEFAULT = 60
+PERSIST_MIN = 10
+PERSIST_MAX = 3600
 
 
 class Settings:
@@ -45,11 +49,23 @@ def load_settings(path=None):
         return Settings({})
 
 
-def poll_seconds(settings):
-    """HA_POLL_SECONDS as an int clamped to 1..60, or the default if unset/invalid."""
-    value = settings.get("HA_POLL_SECONDS", POLL_DEFAULT)
+def clamped_int(settings, key, default, lo, hi):
+    """settings[key] as an int clamped to lo..hi, or default if unset/invalid."""
+    value = settings.get(key, default)
     try:
         value = int(value)
     except (TypeError, ValueError):
-        return POLL_DEFAULT
-    return max(POLL_MIN, min(POLL_MAX, value))
+        return default
+    return max(lo, min(hi, value))
+
+
+def poll_seconds(settings):
+    """HA_POLL_SECONDS as an int clamped to 1..60, or the default if unset/invalid."""
+    return clamped_int(settings, "HA_POLL_SECONDS", POLL_DEFAULT, POLL_MIN, POLL_MAX)
+
+
+def persist_seconds(settings):
+    """PERSIST_SECONDS: minimum seconds between state saves, clamped to 10..3600."""
+    return clamped_int(
+        settings, "PERSIST_SECONDS", PERSIST_DEFAULT, PERSIST_MIN, PERSIST_MAX
+    )

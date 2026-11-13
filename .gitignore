@@ -3,3 +3,6 @@
 .venv/
 # Holds the HA token; copy from src/hardware/settings.toml.example
 settings.toml
+# The simulator's saved state (run.py --state)
+state.json
+state.json.tmp
