@@ -4,7 +4,7 @@
 The pond has one hard-coded koi type drawn in a single color, plus the background boids. Menu settings reset on every boot. This plan adds:
 
 - **Species**: koi, catfish, sturgeon and turtle, with room for more. Each species is a data record, not a subclass. A new species is one table entry. Only a new *kind* of part (tentacles, say) needs new code.
-- **Fixed color variants with persistent spots.** Each fish has a small fixed set of colors, and its spots stay in the same place on its body. Unlike OpenMatrix, the hue never changes per segment. The only color change is a global brightness shift with CO2.
+- **Fixed color varieties with persistent spots.** Each fish has a variety modelled on real koi (kohaku, sanke, showa, asagi…): a base color plus up to two marking colors placed by a few generic zone rules, and its spots stay in the same place on its body. Unlike OpenMatrix, the hue never changes per segment. The only color change is a global brightness shift with CO2.
 - **Genomes and a lifecycle.** A fish grows to its own maximum size, which is inherited from its parent with a random variation and capped per species. A parent breeds its own species, with a small chance of a different one. Turtles are slower and live longer.
 - **Persistence.** One JSON document holds the menu settings and, as a separate object, the pond genomes.
   - The board saves it to `microcontroller.nvm`, using a dirty flag and a throttle: at most once per `PERSIST_SECONDS`, default 60.
@@ -31,7 +31,7 @@ The background boids stay ambient, with flat arrays and no genome (see LEARNINGS
   "v": 1,
   "settings": {"rotation": 90, "sensors_on": true},
   "pond": {"next_id": 7, "fish": [
-    {"id": 3, "species": "koi", "colors": 2, "seed": 40213, "max_size": 92, "age_hours": 51, "offspring": 1}
+    {"id": 3, "species": "koi", "variety": "sanke", "seed": 40213, "max_size": 92, "age_hours": 51, "offspring": 1}
   ]}
 }
 ```
@@ -39,7 +39,7 @@ The background boids stay ambient, with flat arrays and no genome (see LEARNINGS
 - `App` owns `settings` and `Pond` owns `pond`. The document is assembled only at save time, so building it allocates about once a minute, not per frame.
 - **Loading** (`persist/document.py`) puts defaults first, then overlays each known field, as in LEARNINGS.md:
   - Missing keys get defaults, so old saves keep working when fields are added.
-  - Unknown keys and invalid fish are dropped: unknown species, out-of-range `colors`, non-integers. Each drop is printed on the serial console with the reason.
+  - Unknown keys and invalid fish are dropped: unknown species, a `variety` the species doesn't have, non-integers. Each drop is printed on the serial console with the reason.
   - Sizes are clamped to the species range.
   - An unparseable document means defaults.
 - Size: about 120 bytes per fish × 20 fish + settings ≈ 2.5–3 KB of compact JSON.
@@ -95,8 +95,8 @@ The background boids stay ambient, with flat arrays and no genome (see LEARNINGS
 
 | Layer | Holds | Lifetime |
 |---|---|---|
-| **Species** (`creatures/species.py`) | Body shape, color variants, spot rule, parts, motion settings, lifespan, size cap, offspring odds | Static, one shared object per species |
-| **Genome** (`creatures/genome.py`) | id, species, color variant, pattern seed, max size, age, offspring count | One per fish. Persisted, and passed to offspring with mutations |
+| **Species** (`creatures/species.py`) | Body shape, varieties (colors + spot layers), parts, motion settings, lifespan, size cap, offspring odds | Static, one shared object per species |
+| **Genome** (`creatures/genome.py`) | id, species, variety, pattern seed, max size, age, offspring count | One per fish. Persisted, and passed to offspring with mutations |
 | **Creature** (`creatures/spine_creature.py`) | Joints, angles, current size, spots and part state built from the genome | Runtime only |
 
 ### Species
@@ -107,9 +107,8 @@ KOI = Species(
     name="koi",
     joints=10, link=4, widths=(8, 10, 10, 10, 9, 8, 6, 4, 4, 2),
     angle_limit=pi / 8,
-    color_variants=((WHITE, ORANGE, RED), (WHITE, BLACK), (GOLD, ORANGE), (ORANGE, WHITE, BLACK)),
-    spots=SpotRule(count=(2, 5), radius=(1, 2), joints=(0, 7)),
-    parts=(),
+    varieties=KOI_VARIETIES,  # see "Varieties"
+    parts=(Fins(joint=2, length=4, sweep=50), Fins(joint=6, length=2, sweep=60), Tail(length=5, spread=30)),
     motion=Flock(**KOI_FLOCK), # or Wander(...); see Behaviors
     lifespan_days=7,
     size_cap=110, size_min=50, # percent of the base body
@@ -131,7 +130,7 @@ Integers only keep hand edits simple and the dumps exact. CircuitPython floats a
 
 - `id`: unique within the pond. `pond.next_id` gives the next one. For a fish added by hand, pick an id not already used. The loader drops duplicates.
 - `species`: a name from `SPECIES_BY_NAME`.
-- `colors`: index into `species.color_variants`.
+- `variety`: a variety **name** from `species.varieties` (e.g. `"kohaku"`), not an index, for the same reasons as `species`: the table can be reordered and hand edits stay readable. Integers-only applies to numbers; names are strings like `species`.
 - `seed`: 0–65535. Spots are regenerated from it and never stored. Changing it rerolls the spots.
 - `max_size`: percent of the species' base body, clamped to `[size_min, size_cap]`.
 - `age_hours`: hours rather than minutes, so aging alone marks the document dirty at most once an hour.
@@ -146,30 +145,130 @@ Integers only keep hand edits simple and the dumps exact. CircuitPython floats a
 ```python
 def make_offspring(parent, parent_species, next_id):
     species = weighted_pick(parent_species.offspring_odds)
-    same = species is parent_species
-    colors = parent.colors if same and random.random() < 0.8 else random_variant(species)
+    if species is parent_species:
+        variety = inherit_variety(species, parent.variety)
+    else:
+        variety = random_variety(species)
     max_size = clamp(parent.max_size * uniform(0.9, 1.1), species.size_min, species.size_cap)
-    return Genome(next_id, species.name, colors, random.getrandbits(16), round(max_size), 0, 0)
+    return Genome(next_id, species.name, variety, random.getrandbits(16), round(max_size), 0, 0)
 ```
-A child usually keeps the parent's colors but always gets new spots. A child of a different species picks from that species' own variants.
+A child always gets new spots (a new seed). Its variety follows three tiers (`inherit_variety`, `creatures/varieties.py`):
+
+| Roll | Child variety | Example (kohaku parent) |
+|---|---|---|
+| `SAME` (80 %) | The parent's variety | kohaku |
+| `FAMILY` (15 %) | A variety of the parent's **family**, picked by rarity weight | sanke, showa, tancho |
+| `NEW` (5 %) | Any variety of the species, picked by rarity weight | ogon, asagi, shiro utsuri… |
+
+- The percentages are module constants, tuned in M10.
+- A family of one (or a variety with no family) falls through `FAMILY` to `SAME`.
+- `random_variety(species)` is the same weighted pick over all varieties. It's also used for a fresh pond and for a child of a different species.
+- Rarity `weight` lives on the variety (tancho is rare, kohaku common), so a pond bred for a while drifts toward the common varieties with the occasional surprise, like a real mud pond.
 
 ## Components
 
 ### Shared colors and CO2 brightness — `creatures/colors.py`
-- The canvas shares the pond sprite's 16-entry palette, and the water uses indices 0–5. That leaves **about 10 creature colors in total**, shared by every species. Species variants refer to these slots. **Reserve 2 of them** for the future special fish and boid zaps (see Future ideas), which leaves about 8 for the normal species: for example white, orange, red, black, gold, slate, pale belly and olive.
+- The canvas shares the pond sprite's 16-entry palette, and the water uses indices 0–5. That leaves **about 10 creature colors in total**, shared by every species. Species variants refer to these slots. **Reserve 2 of them** for the future special fish and boid zaps (see Future ideas), which leaves 8 for the normal species.
+- **The 8 slots (M6):** `BOID`, `WHITE`, `RED`, `BLACK`, `GOLD`, `SLATE`, `BRONZE`, and one spare. The koi varieties need only the 6 after `BOID`. Later species reuse them instead of adding their own: sturgeon in slate, catfish in bronze, turtle in bronze + slate. The spare (orange, or olive for the turtle) is the first thing M7/M8 may claim.
+  - If the boids' orange-red turns out to look close enough to koi red on the panel, merge `BOID` into `RED` to free another slot.
+  - **"Black" can't be palette black.** An LED at 0 is off, and a mostly-black fish (showa, utsuri) would disappear into the water. `BLACK` is a dim charcoal, just above the water's brightness, so it reads as dark against the water while red and white stand out. Tune it on the panel. At the lowest CO2 step it may sink into the water, which is acceptable.
+  - **White is the brightest thing on the panel.** Use a slightly warm, below-max white (e.g. `0xD8D0C0`) so kohaku don't glare next to everything else.
 - `set_brightness(palette, factor)` rewrites those entries from their base RGB. Each brightness change is about 10 palette writes, with no per-creature cost.
 - CO2 → factor: 1.0 at ≤ 800 ppm, linear down to 0.4 at ≥ 2000 ppm, quantised to 0.1 steps so the palette only changes when the step changes. Unavailable CO2 → 1.0.
 - Wiring: `App.tick` calls `scene.set_sensors(values)` with the whole `sensors.values` dict whenever `sensors.changed`. Scenes without the hook are skipped (`getattr`). `create_scene` can return a small object with `update` / `set_sensors`, or a third tuple element.
   - Use a generic hook, not `set_co2(ppm)`. The scene works out what each value means: the CO2 brightness now, and later the special fish and the zap rate. New sensor-driven effects then need no new wiring in `App`.
 - If 10 colors are too few: build a 32- or 64-entry `Palette` in `make_canvas` with the pond colors copied in. The canvas goes to 8 bits per pixel (4 KB). Blitting the 4-bit pond sprite into it should be allowed, since only sources with *more* bits than the destination are rejected, but check this on hardware.
 
+### Varieties — `creatures/varieties.py` and `pattern.py`
+**Three layers, and only the last one is koi-specific:**
+
+| Layer | What it is | Who owns it |
+|---|---|---|
+| Spot generator (`make_spots`) | One loop over a variety's layers, with a branch per zone `mode` | `pattern.py`, shared by every species |
+| Zones | Placement records (`PATCHES`, `DORSAL`…) in **body-relative** units | `pattern.py`, shared presets; a species may define its own |
+| Varieties | Base, fins, up to 2 (color, zone) layers, family, weight | Each species' own tuple: `KOI_VARIETIES`, `CATFISH_VARIETIES`… |
+
+- **A new pattern** (a different color, count, size or placement) is data: a new zone record or a new variety line. No code.
+- **A new *kind* of pattern** (stripes, say) is one new `mode` branch in `make_spots`. This is the same rule as parts: only a new kind needs code.
+- **A plain species** has a single variety with no layers, or one simple layer. `Species` requires at least one variety, so the creature code never special-cases "no pattern".
+- Families and weights are **per species**. Inheritance only looks inside the species' own tuple, so koi families never leak into catfish. A species with one variety always breeds true, with no extra code (the `FAMILY` and `NEW` tiers fall through to `SAME`).
+- Variety names only have to be unique within a species. The genome's `variety` is looked up in `species.varieties`, so `"plain"` can exist on several species.
+
+#### Koi
+Taken from real koi (https://blueridgekoi.com/koi-goldfish-resources/koi-variety-guide/). The insight that keeps this simple: **almost every variety is "a base color + one or two marking colors, each placed by one of a handful of rules"**. Kohaku and Hi Utsuri are the same pattern with the colors swapped; Tancho is Kohaku with a single head spot. So the spot generator knows nothing about varieties, only about a few **zones**, and a variety is pure data:
+
+```python
+class Variety:  # name, base slot, fin slot, up to 2 layers, family, rarity weight
+    ...
+KOHAKU = Variety("kohaku", base=WHITE, fins=WHITE, layers=((RED, PATCHES),), family="gosanke", weight=10)
+```
+
+**Zones** (`pattern.py`). Each is a small record: `count`, `radius`, `span` (where along the body, **percent of the body length**, 0 = head, 100 = tail tip), `t` (lateral range, −1..1), and `mode` (`scatter` = random, `line` = evenly spaced along the span).
+
+- The span is in percent, not joint indices, so the same zone fits a 10-joint koi, a 12-joint sturgeon and a 9-joint catfish. `make_spots` maps it to a joint plus the fraction `s` using the species' joint count. `line` mode spaces its spots by `count` over the span, not one per joint, so it also scales with the body.
+- The radius stays in base-body pixels and scales with size like everything else.
+
+| Zone | count | radius | span % | t | mode | Reads as |
+|---|---|---|---|---|---|---|
+| `PATCHES` | 2–4 | 2–3 | 0–75 | −1..1 | scatter | big blotches (kohaku red, utsuri patches) |
+| `SPECKS` | 2–5 | 1 | 20–75 | −1..1 | scatter | small accents, not on the head (sanke black) |
+| `HEAD` | 1 | 2 | 0 | 0 | scatter | single crown spot (tancho) |
+| `EDGES` | 7 per side | 1 | 10–75 | ±1, alternating | line | color along the sides (asagi/shusui red) |
+| `DORSAL` | 4 | 1 | 10–75 | 0 | line | row of scales down the back (shusui) |
+
+**The variety table.** This is all 7 colors (see Shared colors). Fin colors follow the real fish: white fins on the white-based varieties, red fins on asagi/shusui.
+
+| Variety | Base | Layer 1 | Layer 2 | Fins | Family | Weight |
+|---|---|---|---|---|---|---|
+| kohaku | white | red `PATCHES` | — | white | gosanke | 10 |
+| sanke | white | red `PATCHES` | black `SPECKS` | white | gosanke | 8 |
+| showa | black | red `PATCHES` | white `PATCHES` | black | gosanke | 6 |
+| tancho | white | red `HEAD` | — | white | gosanke | 2 |
+| shiro utsuri | black | white `PATCHES` | — | black | utsuri | 5 |
+| hi utsuri | black | red `PATCHES` | — | black | utsuri | 4 |
+| ki utsuri | black | gold `PATCHES` | — | black | utsuri | 3 |
+| asagi | slate | red `EDGES` | — | red | blue | 4 |
+| shusui | slate | red `EDGES` | black `DORSAL` | red | blue | 3 |
+| hariwake | white | gold `PATCHES` | — | white | metallic | 3 |
+| yamabuki ogon | gold | — | — | gold | metallic | 4 |
+| platinum ogon | white | — | — | white | metallic | 3 |
+| chagoi | bronze | — | — | bronze | solid | 3 |
+
+- Left out on purpose: the **net/scale-edge** varieties (matsuba, kujaku, goromo, goshiki, chagoi's net). Their look is a pattern per scale, which is below what one LED pixel can show. Kumonryu is left for the "pattern changes with age" idea (Future ideas).
+- "Metallic" has no rendering of its own. The family just groups the ogon-type fish for inheritance.
+
+#### Other species (sketches, finalised in M7/M8)
+These reuse the shared zones where they fit and add a zone or two of their own. Colors come from the shared slots (see Shared colors).
+
+| Species | Variety | Base | Layers | Notes |
+|---|---|---|---|---|
+| catfish | plain | bronze | — | the common one |
+| catfish | mottled | bronze | black `MOTTLE` (6–10 specks, r 1, 0–90 %) | a catfish-only zone: many small dark specks |
+| catfish | albino | white | — | rare (low weight) |
+| sturgeon | plain | slate | white `SCUTES` | a sturgeon-only zone: `line`, `t` = 0 and ±1, so the three rows of bony plates read as dotted stripes. Uses only existing modes |
+| turtle | — | — | — | the shell is a sprite: its pattern lives in the shell zones, baked into the sprite (see Spots), and the body uses the plain base |
+
+- None of these need a new mode. A banded or striped species later (a "tiger" special fish) would add a `band` mode: one full-width bar across the body at a span, i.e. `t` covering −1..1 in one wide spot.
+
 ### Spots — `creatures/pattern.py`
-- `make_spots(rule, seed, n_colors)` uses a seeded `random.Random` (or seeds the global `random` and restores it) and returns `[(joint, t, radius, color_slot)]`. Here `t` is a lateral offset in −1..1 of the half-width at that joint. `color_slot` 0 is the base color and is never used for spots.
-- Render, after the body fill: `cx = jx - sin(a)·t·half`, `cy = jy + cos(a)·t·half`, then `fill_region`. `CreatureSpine` already keeps `angles`, so this costs a few multiplies per spot. The spots bend with the spine.
+- **Own PRNG, not `random`.** `make_spots(variety, seed)` uses a small xorshift written in `pattern.py`. CPython's and CircuitPython's `random` produce different sequences for the same seed, and CircuitPython has no `random.Random` or `getstate`. A tiny integer xorshift gives the **same spots on the desktop and the board**, so a pond designed in the simulator looks the same after `deploy.sh --state`. It also leaves the global `random` alone.
+- One loop for every zone: for each layer, for each spot, draw `joint`, `s` (0..1, fraction of the way to the next joint, so spots aren't locked to the joint grid), `t` and `radius` from the zone's ranges (`line` mode steps the joint instead of drawing it). It returns `[(joint, s, t, radius, slot)]` in body coordinates. Layer 1 is drawn before layer 2, so layer 2 sits on top (sanke's black over the red).
+- **Spots stay inside the body.** On each size step (`set_size`) the spots are converted to pixels: the lateral offset is `t · (half_width − radius)`, so even `t = ±1` keeps the square inside the outline, with no clipping per frame. `set_size` stores `(joint, s, offset_px, radius_px, slot)`.
+- Render, after the body fill: lerp the joint position by `s` toward the next joint, then step sideways along the joint's normal `(−uy, ux)`: `cx = x − uy·off`, `cy = y + ux·off`, then `fill_region`. `CreatureSpine` already keeps `ux`/`uy`, so this costs a few multiplies per spot and no trig. The spots bend with the spine.
+- Base color fills the body, so a solid variety (ogon, chagoi) has no spots and costs nothing extra.
 - Turtle: the shell spots are in shell coordinates, baked into the pre-drawn shell sprites (8 or 16 headings × size steps).
 
 ### Parts — `creatures/parts.py`
 - Each part type has `attach(creature) -> state` and `render(state, creature, bitmap)`. The species lists part *instances* (shared settings). Per-fish state, such as a whisker chain, comes from `attach`.
+- **Layers.** Each part has `under = True/False`. `SpineCreature` splits the parts into `under` and `over` lists once, at construction, and draws `under parts → body → spots → over parts`. Fins go under, so the body covers their roots; whiskers and shells go over.
+- **Part colors** come from the creature (`creature.fin_slot`, set from the variety), so a part instance stays shared by every fish of the species.
+- **Part API** (M5.5): `attach(creature) -> state`, `resize(state, creature) -> state` (on each size step, so lengths are scaled there and never per frame), `reach(creature)` (how far past the spine it draws, added to `render_radius` for the culling) and `render(state, creature, bitmap)`.
+- **No per-frame line drawing.** Lines cost ~0.2 ms each on the board, almost all of it Python overhead (OPTIMIZATIONS.md "M5.5").
+- **Fins and tail are built from discs** (`BlobPart`). A part is a list of `(back, out, diameter)` discs in its joint's own frame. A disc looks the same at any heading, so nothing is pre-drawn per direction: each frame turns every offset with the joint's unit vector `(ux, uy)` (a few multiplies, no trig) and blits a shared disc from `graphics/stamps.py`, the same discs the body uses. The scaled offsets are worked out on `resize`. Subclasses only give `joint_index` and `blobs(creature)`.
+- `Fins(joint, length, sweep=60, width=3, root_inset=0.8)`: a mirrored pair of solid fins. Each fin's root sits on the body edge at `joint` (`root_inset` × the half-width), and the fin points `sweep` degrees out from the tail direction. It's 2 discs along that line, `width` wide halfway out and ⅔ of that at the tip, which reads as a teardrop. The koi has one pair: pectorals at joint 1, length 4. The pelvic pair was dropped because the koi looked better without it.
+- `Tail(length, spread=40, width=2)`: two lobes `spread` degrees either side of the last joint's tail direction, each 3 shrinking discs, which reads as a forked tail. The last joint swings with the spine, so the tail sweeps on turns.
+- A koi blits 12 body discs (10 joints + 2 tail gap fills) + 4 fin + 6 tail discs = 22 blits per frame. If that's too slow on the board, the fallback is a part pre-drawn per heading: one `atan2` and one blit per part, costing ~7 KB of images per (size, fin color). That was tried and works; it's described in OPTIMIZATIONS.md "M5.5".
+- **Clipping**: `stamps.blit` crops the left and top edges itself, because CircuitPython's `blit` rejects a position outside the destination but clips the right and bottom. Blinka on the desktop silently accepts out-of-range writes, so the desktop can't catch a missing clip.
 - `Whiskers`: a short follow-the-leader chain anchored at the head joint with a side offset, using the same mechanism as `CreatureSpine.move`, so the whiskers trail when the catfish turns.
 - `Snout`: extra narrow joints ahead of the head.
 - `Shell` / `Flippers`: pre-drawn rotated sprites, blitted at the nearest heading.
@@ -229,6 +328,9 @@ The rule from OPTIMIZATIONS.md still applies: method calls and allocations are w
 - A fresh pond (no saved state) starts with a few random koi and one of each other species, so everything is visible.
 
 ## Future ideas (not in this plan, but the design leaves room for them)
+
+### Varieties that change with age (kumonryu)
+Real kumonryu change their black-and-white pattern through their life. Add a `shifting=True` flag on a variety: on each growth step, the creature reseeds its spots from `hash(seed, size_step)` instead of `seed`. That's no new data in the genome and no per-frame cost, since spots are already rebuilt on size steps. White base, black `PATCHES`, family `blue` or its own.
 
 ### Special fish driven by HA conditions
 Example: a lightning fish that appears only while the washing machine is running. Special fish don't reproduce or age. They use the same movement as normal fish, only much faster.
@@ -312,12 +414,33 @@ Example: a lightning fish that appears only while the washing machine is running
   - Done: `create_scene` may return a third element, `set_sensors(values)`. `App` calls it at startup, on a sensor swap and whenever `sensors.changed`. `CreatureColors` owns slots 6–13 (14–15 reserved) and writes them only when the CO2 step changes, in integer tenths, so full brightness is the exact base RGB. For now there are two slots, `BOID` and `KOI_BLUE`. M6 replaces the blue with the koi variants. `FakeSensors` CO2 now sweeps from 400 to 2200 ppm over 4 minutes, and `run.py --fake-sensors` uses it even with `HA_URL` set. There, `+` / `-` set CO2 by hand in 100 ppm steps and `0` resumes the sweep. The step rounds halves up, because `round()` rounds half to even and made the steps uneven. On the desktop, a seeded 200-frame run of the pond is pixel-identical to M4. On the board, `DEBUG` shows 14.4–16.1 fps and 30.6–35.4 ms physics, the same as M4 (OPTIMIZATIONS.md "M5").
 - *Check:* `FakeSensors` drifting CO2 dims and brightens the fish in visible steps, and the water is unchanged. Frame time is unchanged.
 
-**M6: Color variants + spots.**
-- Add `pattern.py`, `SpotRule` and the koi variants.
-- *Check:* koi show different variants, and the spots stay in place as they swim and turn. The same seed gives the same markings after a restart.
+**M5.5: Fins + tail.**
+- Add `creatures/parts.py` with `Fins` and `Tail` (see Parts), the `under`/`over` split in `SpineCreature`, and `creature.fin_slot` (the koi's one color, `KOI_BLUE`, for now). Add the parts to `KOI`.
+- Tune the fin roots, lengths, sweep and tail spread on the panel. The goal is a recognisable koi silhouette at 64×64, not an accurate one.
+  - Done: `creatures/parts.py` (`Part`, `BlobPart`, `Fins`, `Tail`) and `graphics/stamps.py` (shared discs, clipped `blit`). `SpineCreature` builds the part states in `set_size`, keeps them in `species.parts` order, and splits them into `under` / `over` lists. It takes an optional `fin_slot`, which defaults to the body color.
+  - **Body**: one pre-drawn disc per joint instead of a square, so the width is the same at any heading and the head and tail are round. Joints whose disc is narrower than the link get a second disc at the midpoint, which closes the beading on the tail. Koi widths are now `(8, 10, 10, 10, 9, 8, 6, 5, 3, 2)` for a smooth taper.
+  - The first version drew the fins as 17 lines per koi per frame and dropped the board to 12.8–13.3 fps (render 23.7–29.4 ms, against M5's 11.1–17.8). The fins and tail are now solid shapes made of discs, drawn per frame with no per-heading images (OPTIMIZATIONS.md "M5.5").
+  - Tuned from rendered stills at sizes 50/100/110, straight, diagonal, turning and half off-screen. A 3000-frame headless pond soak runs clean.
+  - Board: 14.0–14.6 fps, render 18.6–20.9 ms, against M5's 14.4–16.1 fps and 11.1–17.8 ms. That's ~1.5 ms per koi for 22 blits. Accepted for now; the cheaper options are listed in OPTIMIZATIONS.md "M5.5" and get revisited with a full pond in M11.
+- *Check:*
+  - The fins stay attached on tight turns, and the tail sweeps with the spine.
+  - Fins and tail scale with `set_size` (try 50 and 110).
+  - `DEBUG` frame time on the board against M5 (14.4–16.1 fps, render 11.1–17.8 ms), recorded in OPTIMIZATIONS.md "M5.5".
+  - The desktop seeded run is no longer pixel-identical to M5 (expected). Take a new reference.
+
+**M6: Koi varieties + spots.**
+- Add `pattern.py` (zones, xorshift, `make_spots`), `varieties.py` (`Variety`, `KOI_VARIETIES`, `random_variety`), and the 6 koi slots in `colors.py` in place of `KOI_BLUE`. Zones use body-relative spans from the start, and `make_spots` is written against `species.joints`, not the koi's 10.
+- `Species.color_variants` / `spots` become `Species.varieties`. `SpineCreature(species, origin, size, variety, seed)` takes the variety and seed directly until the genome exists (M9). The pond gives each koi `random_variety(KOI)` and a random seed.
+- `set_size` converts the spots to pixels; `render` draws them after the body.
+- `inherit_variety` is written and tested on the desktop here (it's pure data), but nothing calls it until M10.
+- *Check:*
+  - The koi show different varieties, and each one is recognisable on the panel: kohaku vs. sanke vs. showa, the tancho head spot, asagi's red sides.
+  - Spots stay in place and inside the outline as the fish swim and turn, and at sizes 50 and 110.
+  - The same seed gives the same markings after a restart, **and on the desktop and the board** (same seed, compare by eye).
+  - `BLACK` and `WHITE` tuned on the panel (see Shared colors). Frame time recorded against M5.5.
 
 **M7: Sturgeon + catfish.**
-- Add the `Snout` and `Whiskers` parts and their species entries. Each gets its own behavior with its own speed.
+- Add the `Snout` and `Whiskers` parts and their species entries. Each gets its own behavior with its own speed. Add their varieties (plain, mottled, albino catfish; sturgeon scutes) and any species-only zones. This should need no change to `make_spots`; if it does, note why.
 - *Check:* both are recognisable at 64×64, the whiskers trail on turns, and the fps stays near the M6 value.
 
 **M8: Turtle.**
@@ -328,12 +451,13 @@ Example: a lightning fish that appears only while the washing machine is running
 - Add `genome.py`, growth in size steps, size clamps, and `Pond.from_dict()`/`to_dict()`. The `pond` object joins the document, the import and the dump.
 - *Check:*
   - Fish restored after a reboot keep their species, colors, spots and size.
-  - Editing a fish's `colors`, `seed` or `max_size` in the desktop `state.json`, or in an imported file on the board, changes that fish on the next start.
+  - Editing a fish's `variety`, `seed` or `max_size` in the desktop `state.json`, or in an imported file on the board, changes that fish on the next start.
   - Adding a fish by hand works, and invalid or duplicate entries are dropped with a printed reason.
 
 **M10: Lifecycle + reproduction.**
-- Add aging, breeding, `make_offspring` (inherited size ± 10 %, rare species switch), death, `MAX_FISH` and `POND_TIME_SCALE`.
+- Add aging, breeding, `make_offspring` (inherited size ± 10 %, the same/family/new variety tiers via `inherit_variety`, rare species switch), death, `MAX_FISH` and `POND_TIME_SCALE`.
 - *Check:*
+  - Over many births in the simulator, the variety split is roughly 80 / 15 / 5 (print the tier on each birth with `DEBUG`).
   - With a high `POND_TIME_SCALE` in the simulator, fish are born small, grow to their own max sizes, breed and die. The population stays ≤ 20.
   - Births and deaths mark the document dirty, and the offspring count survives a restart.
   - A pond bred in the simulator copies to the board with `deploy.sh --state state.json`.
@@ -349,7 +473,8 @@ Example: a lightning fish that appears only while the washing machine is running
 
 ## Files
 - **New:**
-  - `src/creatures/{species,genome,colors,pattern,parts,spine_creature}.py`
+  - `src/creatures/{species,genome,colors,pattern,varieties,parts,spine_creature}.py`
+  - `src/graphics/stamps.py`
   - `src/behaviors/{lifecycle,swim,wander}.py`
   - `src/persist/{__init__,document,store}.py`
   - `tools/pull_state.py`

@@ -9,6 +9,7 @@ from math import pi
 
 from behaviors.flocking import Flock
 from behaviors.wander import Wander
+from creatures.parts import Fins, Tail
 
 
 class Species:
@@ -20,7 +21,7 @@ class Species:
       widths the body width at each joint, both at size 100 (the base body).
     - angle_limit: the sharpest bend between consecutive joints, in radians.
     - color_variants, spots: the fixed color sets and the spot rule (M6).
-    - parts: part instances drawn after the body (M7). Each has
+    - parts: part instances (creatures/parts.py), drawn under or over the body. Each has
       attach(creature) -> state and render(state, creature, bitmap).
     - motion: a Flock or Wander record. The pond builds one behavior per
       species from it.
@@ -49,7 +50,9 @@ class Species:
         persist=True,
     ):
         if len(widths) != joints:
-            raise ValueError("%s: %d widths for %d joints" % (name, len(widths), joints))
+            raise ValueError(
+                "%s: %d widths for %d joints" % (name, len(widths), joints)
+            )
         self.name = name
         self.joints = joints
         self.link = link
@@ -74,8 +77,13 @@ KOI = Species(
     name="koi",
     joints=10,
     link=4,
-    widths=(8, 10, 10, 10, 9, 8, 6, 4, 4, 2),
+    widths=(8, 10, 10, 10, 9, 8, 6, 5, 3, 2),
     angle_limit=pi / 8,
+    # Pectoral pair behind the head and a forked tail
+    parts=(
+        Fins(joint=1, length=4),
+        Tail(length=5),
+    ),
     motion=Flock(
         outside_window_size=30,
         wall_avoid_distance=30,

@@ -416,3 +416,56 @@ same setup as M4, `DEBUG` stats over 5 lines:
 - The two fastest-render lines (11.1, 11.3 ms) are also the two slowest
   physics lines (35.1, 35.4 ms), so the split between the two looks noisy
   from line to line, while their sum stays at ~46–48 ms.
+
+### M5.5: fins, tail and a rounder body
+
+The first version drew the koi's fins and tail as lines: 17
+`bitmaptools.draw_line` calls per fish per frame (4 rays per pectoral fin,
+2 per pelvic fin, 5 for the tail), each with a few `floor()`s and multiplies
+in Python around it. Pond on the board, `DEBUG` stats over 4 lines:
+
+| Setup | FPS | Physics (ms) | Render (ms) | Net avg / max (ms) | Refresh (ms) |
+| ----- | --- | ------------ | ----------- | ------------------ | ------------ |
+| M5 (for comparison) | 14.4–16.1 | 30.6–35.4 | 11.1–17.8 | 0.2–2.0 / 8.6 | 14.8–16.7 |
+| M5.5a: fins + tail as lines | 12.8–13.3 | 29.8–34.9 | 23.7–29.4 | 0.2–3.1 / 31.4 | 15.0–16.0 |
+| M5.5b: disc body, disc fins + tail | 14.0–14.6 | 31.9–33.5 | 18.6–20.9 | 0.2–2.1 / 8.6 | 15.0–16.3 |
+
+- Render went up ~11 ms for 3 koi × 17 lines: **~0.2 ms per line**, almost
+  all of it the Python around each call, not the native line drawing.
+  On the desktop the lines added ~75 % to the koi render, about the same
+  ratio.
+- So per-frame line drawing is out for parts. The second version uses
+  discs instead (`graphics/stamps.py`):
+  - The body is one pre-drawn disc per joint (blit with
+    `skip_source_index=0`) instead of a `fill_region` square, so it keeps its
+    width at any heading and the head and tail come out round. Narrow tail
+    joints whose disc is smaller than the link get a second disc at the
+    midpoint to close the gap (2 extra blits per koi).
+  - The fins and tail are solid shapes built from the same shared discs
+    (`BlobPart`): 4 discs for the pectoral pair and 6 for the forked tail.
+    A disc looks the same at any heading, so nothing is pre-drawn per
+    direction, and a frame does a few multiplies and one blit per disc.
+    That's 22 blits per koi per frame in total, and no trig.
+  - Tried and set aside: pre-drawing each part at 16 headings per (size,
+    fin color), so a frame does one `atan2` and one blit per part (2 per koi
+    instead of 10). It costs ~7 KB of images per (size, fin color), built the
+    first time a fish needs one. It's the fallback if the disc parts turn out
+    slow on the board.
+- **Desktop timings can't compare these.** Blinka's `blit` is a Python loop
+  per pixel, so on the desktop the disc body looks ~4× slower than
+  `fill_region` squares, while on the board both are native.
+- Memory: discs are shared per (diameter, color), about 8 small bitmaps per
+  color for the koi.
+- **Result (M5.5b):** render is ~4–5 ms above M5 for 3 koi, so ~1.5 ms
+  per koi for 22 blits (12 body, 10 parts) where M5 did 10 `fill_region`s.
+  That's ~0.1 ms per blit with the offset math around it, about half the
+  cost of a line. FPS is 14.0–14.6, against M5's 14.4–16.1. Physics is
+  unchanged. Accepted for now, since it looks right.
+- Left for later, cheapest first:
+  - Tail 2 discs per lobe instead of 3 (−2 blits per koi).
+  - Drop the midpoint gap fills where a slightly wider disc closes the gap
+    (−2 blits).
+  - Pre-draw the fins and tail per heading (−8 blits, +1 `atan2` per
+    part, ~7 KB per size and fin color).
+  - Recheck the per-koi cost with a full pond of 20 in M11. That's where it
+    matters: at ~1.5 ms each, 20 fish are ~30 ms of render.
