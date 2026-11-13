@@ -124,7 +124,7 @@ Planned species. All numbers are starting points to tune on the panel:
 | koi | 10 joints, wide middle | none | `Flock`: current koi settings | 7 d | 110 |
 | catfish | 9 joints, wide flat head | `Whiskers(count=2, length=6)` | `Wander`: slow, hugs the edges | 10 d | 100 |
 | sturgeon | 12 joints, narrow (`widths` ≤ 6) | `Snout(length=4)`: extra narrow joints ahead of the head | `Wander`: long, smooth turns (low turn rate, small `angle_limit`) | 14 d | 130 |
-| turtle | 3 joints | `Shell(rx=4, ry=3)`, `Flippers()` | `Wander`: ~1/4 koi speed, long pauses | 30 d | 90 |
+| turtle | 3 joints (head, shell, tail) | `Shell(rx=7, ry=5.5)`, `Flippers()` | `Wander`: ~1/4 koi speed, long pauses | 30 d | 90 (min 60) |
 
 The turtle is `solo=True` (a `Species` flag, default `False`), which the lifecycle reads as: exactly one at a time, outside `MAX_FISH`, no breeding, never in anyone's `offspring_odds`, and replaced by an egg on death (see Lifecycle).
 
@@ -173,7 +173,7 @@ A child always gets new spots (a new seed). Its variety follows three tiers (`in
 
 ### Shared colors and CO2 brightness — `creatures/colors.py`
 - The canvas shares the pond sprite's 16-entry palette, and the water uses indices 0–5. That leaves **about 10 creature colors in total**, shared by every species. Species variants refer to these slots. **Reserve 2 of them** for the future special fish and boid zaps (see Future ideas), which leaves 8 for the normal species.
-- **The 8 slots (M6):** `BOID`, `WHITE`, `RED`, `BLACK`, `GOLD`, `SLATE`, `BRONZE`, and one spare. The koi varieties need only the 6 after `BOID`. Later species reuse them instead of adding their own: sturgeon in slate, catfish in bronze, turtle in bronze + slate. The spare (orange, or olive for the turtle) is the first thing M7/M8 may claim.
+- **The 8 slots (M6):** `BOID`, `WHITE`, `RED`, `BLACK`, `GOLD`, `SLATE`, `BRONZE`, and one spare. The koi varieties need only the 6 after `BOID`. Later species reuse them instead of adding their own: sturgeon in slate, catfish in bronze, turtle in bronze + slate. The spare (orange, or olive for the turtle) is the first thing M7/M8 may claim. M8 took it as `OLIVE` for the turtle, so all 8 normal slots are now in use.
   - If the boids' orange-red turns out to look close enough to koi red on the panel, merge `BOID` into `RED` to free another slot.
   - **"Black" can't be palette black.** An LED at 0 is off, and a mostly-black fish (showa, utsuri) would disappear into the water. `BLACK` is a dim charcoal, just above the water's brightness, so it reads as dark against the water while red and white stand out. Tune it on the panel. At the lowest CO2 step it may sink into the water, which is acceptable.
   - **White is the brightest thing on the panel.** Use a slightly warm, below-max white (e.g. `0xD8D0C0`) so kohaku don't glare next to everything else.
@@ -250,7 +250,7 @@ These reuse the shared zones where they fit and add a zone or two of their own. 
 | catfish | mottled | bronze | black `MOTTLE` (6–10 specks, r 15 %, 0–90 %) | a catfish-only zone: many small dark specks |
 | catfish | albino | white | — | rare (low weight) |
 | sturgeon | plain | slate | white `SCUTES` | a sturgeon-only zone: `line`, `t` = 0 and ±1, radius 0 (1 px), 5 per row, staggered, so the three rows of bony plates read as dotted stripes. Uses only existing modes |
-| turtle | — | — | — | the shell is a sprite: its pattern lives in the shell zones, baked into the sprite (see Spots), and the body uses the plain base |
+| turtle | slider / box / albino | olive / slate / white skin | shell: olive + gold `SHELL_PLATES`, bronze + gold `SHELL_SPECKS`, gold | the shell is a sprite: its pattern lives in `Variety.shell` (a `ShellLook`: fill, rim, marks in shell zones), baked into the sprite (see Spots), and the body uses the plain base |
 
 - None of these need a new mode. A banded or striped species later (a "tiger" special fish) would add a `band` mode: one full-width bar across the body at a span, i.e. `t` covering −1..1 in one wide spot.
 
@@ -260,7 +260,7 @@ These reuse the shared zones where they fit and add a zone or two of their own. 
 - **Spots stay inside the body.** On each size step (`set_size`) the spots are converted to pixels: the lateral offset is `t · (half_width − radius)`, so even `t = ±1` keeps the square inside the outline, with no clipping per frame. `set_size` stores `(joint, s, offset_px, radius_px, slot)`.
 - Render, after the body fill: lerp the joint position by `s` toward the next joint, then step sideways along the joint's normal `(−uy, ux)`: `cx = x − uy·off`, `cy = y + ux·off`, then `fill_region`. `CreatureSpine` already keeps `ux`/`uy`, so this costs a few multiplies per spot and no trig. The spots bend with the spine.
 - Base color fills the body, so a solid variety (ogon, chagoi) has no spots and costs nothing extra.
-- Turtle: the shell spots are in shell coordinates, baked into the pre-drawn shell sprites (8 or 16 headings × size steps).
+- Turtle: the shell spots are in shell coordinates, baked into the pre-drawn shell sprites (16 headings, rebuilt on each size step). `make_marks` (M8) is the coordinate-free half of `make_spots`, shared by both.
 
 ### Parts — `creatures/parts.py`
 - Each part type has `attach(creature) -> state` and `render(state, creature, bitmap)`. The species lists part *instances* (shared settings). Per-fish state, such as a whisker chain, comes from `attach`.
@@ -275,7 +275,7 @@ These reuse the shared zones where they fit and add a zone or two of their own. 
 - **Clipping**: `stamps.blit` crops the left and top edges itself, because CircuitPython's `blit` rejects a position outside the destination but clips the right and bottom. Blinka on the desktop silently accepts out-of-range writes, so the desktop can't catch a missing clip.
 - `Whiskers`: a short follow-the-leader chain anchored at the head joint with a side offset, using the same mechanism as `CreatureSpine.move`, so the whiskers trail when the catfish turns.
 - `Snout`: extra narrow joints ahead of the head.
-- `Shell` / `Flippers`: pre-drawn rotated sprites, blitted at the nearest heading.
+- `Shell`: pre-drawn rotated sprites, blitted at the nearest heading. `Flippers` ended up as discs like `BlobPart` (M8), with paddle phases worked out on resize.
 - Parts are resolved at construction. A frame does no `if species ==` checks. Draw order: body, then spots, then parts.
 
 ### Generic body — `creatures/spine_creature.py`
@@ -473,6 +473,14 @@ Example: a lightning fish that appears only while the washing machine is running
 
 **M8: Turtle.**
 - Add `Shell` (pre-drawn, spots baked in), `Flippers`, and the slow turtle behavior. The species gets `solo=True`; the egg and its hatching come in M10 with the rest of the lifecycle.
+  - Done (desktop): `Shell` and `Flippers` in `parts.py`, `TURTLE` in `species.py` with `solo=True`, `TURTLE_VARIETIES` with a `ShellLook` each, the `SHELL_PLATES` / `SHELL_SPECKS` zones, and `OLIVE` in the last spare slot (13). The pond starts with one turtle at size 90.
+  - **Body**: 3 joints at `link=8`, widths `(4, 0, 2.5)`. A width of 0 is new: no disc at that joint and no gap fill next to it, so the joint under the shell costs nothing. That's 2 body blits instead of 5. Other species are unchanged.
+  - **Shell**: `Shell(rx=7, ry=5.5)`, 13 × 10 px at size 90. One sprite per heading, 16 headings, each 15 × 15 at size 90, rebuilt on each size step. They belong to the one turtle because the seeded marks are baked in. A frame does one `atan2` and one blit. The look comes from `Variety.shell` (a `ShellLook`: fill, a 1 px rim, up to 2 mark layers). `make_spots` was split so its coordinate-free half, `make_marks`, also places the shell marks (span runs front to back of the oval, `t` across it). The body spots for every existing seed are byte-identical.
+  - **Flippers** are discs, not sprites, the same way as `BlobPart`: front and rear pairs, 2 discs each. The angle swings ±30° in diagonal pairs (front left with rear right), one cycle per 6 px the head travels. A pausing turtle holds still. All 6 phases are worked out on resize.
+  - Looks: slider (olive shell, 5 gold scute dots, olive skin, weight 6), box (bronze shell with gold specks, slate skin, 3), albino (gold shell, bronze rim, white skin, 1). The first try at 9 × 7 px was too small next to the koi, and 8 scute dots made the slider look as speckled as the box. `size_min` is 60, because below that the turtle is an unreadable blob.
+  - `Wander` at cruise 5 / max 8 px/s, `max_turn` 0.8, retarget 3–8 s, `pause_chance` 0.4. In a 3000-frame headless soak it averages 3.5 px/s, is paused (< 1 px/s) 26 % of the time and is on screen 93 % of the time.
+  - Per frame: 2 body discs + 8 flipper discs + 1 shell blit = 11 items. `bench_render.py` has two turtle cases and prints the shell sprite memory (`gc.mem_free`, board only).
+  - Board: 10.0–10.7 fps, physics 37.4–40.3 ms, render 36.9–41.8 ms, against M7b's 10.7–11.2 fps and 32.9–38.9 ms render. The turtle renders in 1.55 ms (flippers 0.71, shell 0.58), the cheapest creature in the pond. Shell sprites take 4208 bytes at size 100 (16 × 17 × 17 px), so memory is a non-issue (OPTIMIZATIONS.md "M8").
 - *Check:* the turtle swims slowly, the shell rotates smoothly through its pre-drawn headings, and memory use for the sprites is recorded.
 
 **M9: Genome, growth, max size, pond persistence.**

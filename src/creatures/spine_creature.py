@@ -67,13 +67,20 @@ class SpineCreature(CreatureSpine):
         self.radii = [ceil(w * scale / 2) for w in species.widths]
         # A shared pre-drawn disc per joint, and the offset from the joint to
         # the disc's top-left corner, so render does one blit per joint
-        diameters = [max(1, round(w * scale)) for w in species.widths]
+        widths = species.widths
+        diameters = [max(1, round(w * scale)) for w in widths]
         self.discs = [stamps.disc(d, self.color_index) for d in diameters]
         self.offsets = [d / 2 - 0.5 for d in diameters]
+        # A width of 0 draws no disc at that joint (the turtle's middle
+        # joint, which its shell covers)
+        self.drawn = [i for i in range(len(widths)) if widths[i] > 0]
         # Joints whose disc is narrower than the link would leave a bead-like
-        # gap to the joint ahead, so they get a second disc at the midpoint
+        # gap to the joint ahead, so they get a second disc at the midpoint,
+        # unless either end isn't drawn
         self.fills = [
-            i for i in range(1, len(diameters)) if diameters[i] < self.link_size
+            i
+            for i in range(1, len(diameters))
+            if diameters[i] < self.link_size and widths[i] > 0 and widths[i - 1] > 0
         ]
         # The parts' scaled state. Built here rather than in __init__ because
         # it depends on the size; the first call attaches them.
@@ -135,7 +142,7 @@ class SpineCreature(CreatureSpine):
         width = bitmap.width
         height = bitmap.height
         blit = bitmaptools.blit
-        for i in range(len(jx)):
+        for i in self.drawn:
             stamp = discs[i]
             o = offsets[i]
             x = floor(jx[i] - o)

@@ -6,7 +6,13 @@ from _dio import dio
 from creatures import colors
 from creatures.colors import CreatureColors
 from creatures.fish_boid import FishBoid
-from creatures.species import CATFISH, KOI, KOI_WANDER as KOI_WANDER_MOTION, STURGEON
+from creatures.species import (
+    CATFISH,
+    KOI,
+    KOI_WANDER as KOI_WANDER_MOTION,
+    STURGEON,
+    TURTLE,
+)
 from creatures.spine_creature import SpineCreature
 from creatures.varieties import random_variety
 from graphics.vector import Vector
@@ -99,6 +105,7 @@ def create_scene(width=64, height=64):
     fish = [
         (CATFISH, (12, 48), 100),
         (STURGEON, (50, 12), 100),
+        (TURTLE, (48, 50), 90),
         (KOI, (32, 32), 100),
         (KOI, (16, 16), 50),
         (KOI, (40, 40), 50),

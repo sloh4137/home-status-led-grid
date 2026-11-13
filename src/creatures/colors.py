@@ -16,8 +16,8 @@ RESERVED = 2
 LAST_SLOT = PALETTE_SIZE - RESERVED - 1  # last slot a normal species may use
 
 # Slot numbers. The koi varieties use WHITE..BRONZE; later species reuse
-# them (sturgeon slate, catfish bronze, turtle bronze + slate). Slot 13 is
-# the spare, the first thing a new species may claim.
+# them (sturgeon slate, catfish bronze). OLIVE took the spare slot 13 for
+# the turtle's shell and skin, so every normal slot is now in use.
 BOID = 6
 WHITE = 7
 RED = 8
@@ -25,6 +25,7 @@ BLACK = 9
 GOLD = 10
 SLATE = 11
 BRONZE = 12
+OLIVE = 13
 
 # (slot, base 0xRRGGBB) at full brightness
 BASE_RGB = (
@@ -38,6 +39,7 @@ BASE_RGB = (
     (GOLD, 0xE8A010),
     (SLATE, 0x5A7FA8),
     (BRONZE, 0x8A5422),
+    (OLIVE, 0x5E7A2A),
 )
 
 # CO2 -> brightness: full at or below CO2_FULL ppm, falling linearly to

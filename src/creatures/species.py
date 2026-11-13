@@ -9,11 +9,12 @@ from math import pi
 
 from behaviors.flocking import Flock
 from behaviors.wander import Wander
-from creatures.parts import Fins, Snout, Tail, Whiskers
+from creatures.parts import Fins, Flippers, Shell, Snout, Tail, Whiskers
 from creatures.varieties import (
     CATFISH_VARIETIES,
     KOI_VARIETIES,
     STURGEON_VARIETIES,
+    TURTLE_VARIETIES,
 )
 
 
@@ -24,6 +25,7 @@ class Species:
 
     - joints, link, widths: the spine. link is the distance between joints and
       widths the body width at each joint, both at size 100 (the base body).
+      A width of 0 draws no disc there (a joint a part covers).
     - angle_limit: the sharpest bend between consecutive joints, in radians.
     - varieties: the species' color varieties (creatures/varieties.py), at
       least one. A fish's genome names one of them.
@@ -35,6 +37,9 @@ class Species:
       M10). Sizes are percent of the base body.
     - lifecycle, persist: False for special fish that don't age or breed and
       aren't saved.
+    - solo: exactly one at a time (the turtle). The lifecycle (M10) keeps it
+      outside MAX_FISH, never breeds it, and replaces it with an egg when it
+      dies. A solo species is never in anyone's offspring_odds.
     """
 
     def __init__(
@@ -53,6 +58,7 @@ class Species:
         offspring_odds=(),
         lifecycle=True,
         persist=True,
+        solo=False,
     ):
         if len(widths) != joints:
             raise ValueError(
@@ -74,6 +80,7 @@ class Species:
         self.offspring_odds = offspring_odds
         self.lifecycle = lifecycle
         self.persist = persist
+        self.solo = solo
 
     def __repr__(self):
         return "<Species %s>" % self.name
@@ -182,6 +189,41 @@ STURGEON = Species(
     size_cap=130,
 )
 
+# A small head, the shell over the middle joint and a stub of a tail, with
+# four paddling flippers. The shell is a pre-drawn sprite per heading
+# (parts.Shell), so the whole turtle is about ten blits. About a quarter of
+# the koi's speed, with long pauses. The loner of the pond: one at a time,
+# never breeds (solo).
+TURTLE = Species(
+    name="turtle",
+    joints=3,
+    link=8,
+    # Head and tail. The middle joint is under the shell, so it has no disc
+    # (width 0) and neither link gets a gap fill: two body blits in all.
+    widths=(4, 0, 2.5),
+    angle_limit=pi / 5,
+    varieties=TURTLE_VARIETIES,
+    parts=(
+        Flippers(joint=1, front=(-3.5, 4.5, 3.5, 100, 2.5), rear=(3.5, 4, 2.5, 40, 2)),
+        Shell(rx=7, ry=5.5, joint=1),
+    ),
+    motion=Wander(
+        outside_window_size=15,
+        wall_avoid_distance=20,
+        avoidance_force=40.0,
+        min_speed=0.5,
+        max_speed=8.0,
+        cruise_speed=5.0,
+        max_turn=0.8,
+        retarget=(3.0, 8.0),
+        pause_chance=0.4,
+    ),
+    lifespan_days=30,
+    size_min=60,
+    size_cap=90,
+    solo=True,
+)
+
 # The koi on WanderBehavior instead, for comparison (pond.KOI_WANDER)
 KOI_WANDER = Wander(
     outside_window_size=30,
@@ -194,4 +236,4 @@ KOI_WANDER = Wander(
     retarget=(1.0, 4.0),
 )
 
-SPECIES_BY_NAME = {s.name: s for s in (KOI, CATFISH, STURGEON)}
+SPECIES_BY_NAME = {s.name: s for s in (KOI, CATFISH, STURGEON, TURTLE)}

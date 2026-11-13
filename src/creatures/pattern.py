@@ -71,6 +71,15 @@ SCUTES = Zone(
     count=5, radius=0, span=(5, 85), t=(-100, 0, 100), mode=LINE, stagger=True
 )
 
+# Turtle shell zones, in shell coordinates (see parts.Shell): span runs from
+# the front of the oval (0) to the back (100) and t across it. The plates
+# are the scute centres, three rows staggered; the specks a scatter of
+# single pixels.
+SHELL_PLATES = Zone(
+    count=2, radius=0, span=(25, 75), t=(-60, 0, 60), mode=LINE, stagger=True
+)
+SHELL_SPECKS = Zone(count=(4, 7), radius=0, span=(10, 90), t=(-80, 80))
+
 
 class XorShift:
     """
@@ -113,27 +122,27 @@ def _place(joints, pct):
     return joint, pos % 100
 
 
-def make_spots(species, variety, seed):
+def make_marks(layers, seed):
     """
-    The variety's spots for this seed, in body coordinates:
-    [(joint, s, t, radius, slot)], all ints. s is 0-100 percent of the way from
-    joint to the next one, t is -100..100 percent of the half-width, and the
-    radius is in percent of the widest half-width. Layer 1 comes first, so layer 2 is drawn on
-    top of it.
+    The (slot, Zone) layers' marks for this seed, independent of any body:
+    [(pct, t, radius, slot)], all ints. pct is 0-100 along the zone's span
+    axis (0 = front), t -100..100 percent of the half-width and radius in
+    percent of the widest half-width. Layer 1 comes first, so layer 2 is
+    drawn on top of it. make_spots maps these onto a spine; the turtle's
+    Shell (creatures/parts.py) maps them onto its oval.
     """
     rng = XorShift(seed)
-    joints = species.joints
-    spots = []
-    for slot, zone in variety.layers:
+    marks = []
+    for slot, zone in layers:
         lo, hi = zone.span
         n = rng.between(zone.count[0], zone.count[1])
         r_lo, r_hi = zone.radius
         if zone.mode == SCATTER:
             t_lo, t_hi = zone.t
             for _ in range(n):
-                joint, s = _place(joints, rng.between(lo, hi))
-                spots.append(
-                    (joint, s, rng.between(t_lo, t_hi), rng.between(r_lo, r_hi), slot)
+                pct = rng.between(lo, hi)
+                marks.append(
+                    (pct, rng.between(t_lo, t_hi), rng.between(r_lo, r_hi), slot)
                 )
         elif zone.mode == LINE:
             # n spots per row, from lo to hi; a staggered row shifts by half
@@ -142,8 +151,24 @@ def make_spots(species, variety, seed):
             for row, t in enumerate(zone.t):
                 shift = 1 if zone.stagger and row % 2 else 0
                 for k in range(n - shift):
-                    joint, s = _place(joints, lo + (step * k + step * shift // 2) // 2)
-                    spots.append((joint, s, t, rng.between(r_lo, r_hi), slot))
+                    pct = lo + (step * k + step * shift // 2) // 2
+                    marks.append((pct, t, rng.between(r_lo, r_hi), slot))
         else:
             raise ValueError("unknown zone mode %r" % zone.mode)
+    return marks
+
+
+def make_spots(species, variety, seed):
+    """
+    The variety's spots for this seed, in body coordinates:
+    [(joint, s, t, radius, slot)], all ints. s is 0-100 percent of the way from
+    joint to the next one, t is -100..100 percent of the half-width, and the
+    radius is in percent of the widest half-width. Layer 1 comes first, so
+    layer 2 is drawn on top of it.
+    """
+    joints = species.joints
+    spots = []
+    for pct, t, radius, slot in make_marks(variety.layers, seed):
+        joint, s = _place(joints, pct)
+        spots.append((joint, s, t, radius, slot))
     return spots

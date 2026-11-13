@@ -566,3 +566,49 @@ M11) is too slow. Savings are from the table above; rerun
 Not worth it: drawing 1 px spots with `bitmap[x, y]` (0.14 ms per pixel,
 slower than a 1 px blit at 0.10 ms), and shrinking discs (size barely
 changes a blit's cost).
+
+### M8: turtle
+
+The pond gains one turtle (size 90). Per frame it draws 2 body discs (head
+and tail; the joint under the shell has width 0, so it gets no disc and no
+gap fill), 8 flipper discs (one of 6 pre-worked paddle phases), and the
+shell as **one pre-drawn sprite**: 16 headings, picked with one `atan2`.
+The shell's seeded marks are baked into those sprites, so they cost nothing
+per frame. Width 0 saves the 3 body blits the turtle would otherwise draw
+under its own shell. `DEBUG` stats over 5 lines:
+
+| Setup | FPS | Physics (ms) | Render (ms) | Net avg / max (ms) | Refresh (ms) |
+| ----- | --- | ------------ | ----------- | ------------------ | ------------ |
+| M7b (for comparison) | 10.7–11.2 | 36.3–39.7 | 32.9–38.9 | — | — |
+| M8: + turtle | 10.0–10.7 | 37.4–40.3 | 36.9–41.8 | 0.2–2.2 / 9.2 | 15.4–16.2 |
+
+- About 0.5 fps below M7b. Render is up ~3 ms and physics ~1–2 ms (one
+  more spine and wander steering), roughly what the bench predicts.
+
+`bench_render.py` on the board, ms per call:
+
+| Fish | Full | Body (discs) | Spots (count) | Parts | Spine |
+| ---- | ---- | ------------ | ------------- | ----- | ----- |
+| koi kohaku | 2.03 | 1.04 (13) | 0.28 (2) | fins 0.33, tail 0.43 | 0.44 |
+| koi shusui | 2.93 | 1.10 (13) | 1.04 (17) | fins 0.33, tail 0.43 | 0.43 |
+| catfish plain | 3.10 | 1.01 (10) | 0.07 (0) | fins 0.32, tail 0.39, whiskers 1.18 | 0.40 |
+| catfish mottled | 3.62 | 0.99 (10) | 0.54 (7) | fins 0.31, tail 0.41, whiskers 1.22 | 0.40 |
+| sturgeon | 3.23 | 0.96 (14) | 0.96 (14 px) | fins 0.50 + 0.31, tail 0.41, snout 0.27 | 0.54 |
+| turtle slider | 1.55 | 0.21 (2) | 0 | flippers 0.71, shell 0.58 | 0.18 |
+| turtle box | 1.53 | 0.21 (2) | 0 | flippers 0.73, shell 0.58 | 0.18 |
+
+Pond water background: 2.66 ms.
+
+- **The turtle is the cheapest creature in the pond** at ~1.5 ms, under
+  the plain koi.
+- The shell's one blit costs 0.58 ms, about four disc blits: the 17 × 17
+  sprite is the biggest stamp in the pond, plus the `atan2` and the
+  clipped `stamps.blit` call. The flippers' 8 discs are ~0.09 ms each, in
+  line with everything else.
+- **Every row is ~40 % below the M7 table** (koi kohaku 2.03 against
+  3.74, pond water 2.66 against 4.59), including fish whose code didn't
+  change. That's from the run conditions, not M8, so compare rows within
+  one run, not across runs.
+- Shell sprite memory: **4208 bytes** for 16 sprites of 17 × 17 at size
+  100 (the bench's size). At the pond's size 90 they're 15 × 15, a little
+  less. Each size step rebuilds them, and the old set is freed.

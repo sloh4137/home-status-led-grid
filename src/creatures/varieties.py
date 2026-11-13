@@ -10,8 +10,18 @@ to be unique within a species.
 
 import random
 
-from creatures.colors import BLACK, BRONZE, GOLD, RED, SLATE, WHITE
-from creatures.pattern import DORSAL, EDGES, HEAD, MOTTLE, PATCHES, SCUTES, SPECKS
+from creatures.colors import BLACK, BRONZE, GOLD, OLIVE, RED, SLATE, WHITE
+from creatures.pattern import (
+    DORSAL,
+    EDGES,
+    HEAD,
+    MOTTLE,
+    PATCHES,
+    SCUTES,
+    SHELL_PLATES,
+    SHELL_SPECKS,
+    SPECKS,
+)
 
 
 class Variety:
@@ -21,9 +31,14 @@ class Variety:
     - layers: up to two (slot, Zone) pairs. Layer 2 is drawn over layer 1.
     - family: varieties that breed into each other (inherit_variety), or None.
     - weight: rarity, relative to the species' other varieties.
+    - shell: a ShellLook for a species with a Shell part (the turtle), else
+      None. The shell's markings live there, in shell coordinates; the
+      body's layers are still drawn on the spine as usual.
     """
 
-    def __init__(self, name, base, fins, layers=(), family=None, weight=1):
+    def __init__(
+        self, name, base, fins, layers=(), family=None, weight=1, shell=None
+    ):
         if len(layers) > 2:
             raise ValueError("%s: %d layers, max 2" % (name, len(layers)))
         self.name = name
@@ -32,9 +47,25 @@ class Variety:
         self.layers = layers
         self.family = family
         self.weight = weight
+        self.shell = shell
 
     def __repr__(self):
         return "<Variety %s>" % self.name
+
+
+class ShellLook:
+    """
+    A turtle shell's colors: the fill, a one-pixel rim around the edge, and
+    up to two (slot, Zone) marking layers placed on the oval by the seed
+    (pattern.make_marks), all baked into the pre-drawn shell sprites.
+    """
+
+    def __init__(self, fill, rim, marks=()):
+        if len(marks) > 2:
+            raise ValueError("shell: %d mark layers, max 2" % len(marks))
+        self.fill = fill
+        self.rim = rim
+        self.marks = marks
 
 
 # Modelled on real koi; see the plan's variety table. The net/scale varieties
@@ -65,6 +96,30 @@ CATFISH_VARIETIES = (
 
 # Sturgeon: slate with the white rows of scutes. A single variety breeds true.
 STURGEON_VARIETIES = (Variety("plain", SLATE, SLATE, ((WHITE, SCUTES),)),)
+
+# Turtle: the body (head, tail, flippers) is plain skin and the look is in
+# the shell. A turtle never breeds, so the family doesn't matter; the
+# weights only pick the variety a new turtle hatches as.
+TURTLE_VARIETIES = (
+    # Olive shell with yellow scute centres and a dark rim (a slider)
+    Variety(
+        "slider",
+        OLIVE,
+        OLIVE,
+        weight=6,
+        shell=ShellLook(OLIVE, BLACK, ((GOLD, SHELL_PLATES),)),
+    ),
+    # Brown shell flecked with gold, slate skin (a box turtle)
+    Variety(
+        "box",
+        SLATE,
+        SLATE,
+        weight=3,
+        shell=ShellLook(BRONZE, BLACK, ((GOLD, SHELL_SPECKS),)),
+    ),
+    # Pale yellow shell, white skin: rare
+    Variety("albino", WHITE, WHITE, weight=1, shell=ShellLook(GOLD, BRONZE)),
+)
 
 # inherit_variety tiers, in percent (tuned in M10)
 SAME = 80
