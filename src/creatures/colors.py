@@ -15,14 +15,29 @@ PALETTE_SIZE = 16
 RESERVED = 2
 LAST_SLOT = PALETTE_SIZE - RESERVED - 1  # last slot a normal species may use
 
-# Slot numbers. M6 replaces the single koi blue with the koi color variants.
+# Slot numbers. The koi varieties use WHITE..BRONZE; later species reuse
+# them (sturgeon slate, catfish bronze, turtle bronze + slate). Slot 13 is
+# the spare, the first thing a new species may claim.
 BOID = 6
-KOI_BLUE = 7
+WHITE = 7
+RED = 8
+BLACK = 9
+GOLD = 10
+SLATE = 11
+BRONZE = 12
 
 # (slot, base 0xRRGGBB) at full brightness
 BASE_RGB = (
     (BOID, 0xF54927),
-    (KOI_BLUE, 0x2E9BFF),
+    # A warm white below max, so kohaku don't glare next to everything else
+    (WHITE, 0xD8D0C0),
+    (RED, 0xD81E10),
+    # "Black" can't be palette black: an LED at 0 is off and a showa would
+    # vanish. A dim charcoal just above the water (brightest ~0x101719)
+    (BLACK, 0x2C2A2C),
+    (GOLD, 0xE8A010),
+    (SLATE, 0x5A7FA8),
+    (BRONZE, 0x8A5422),
 )
 
 # CO2 -> brightness: full at or below CO2_FULL ppm, falling linearly to

@@ -10,6 +10,7 @@ from math import pi
 from behaviors.flocking import Flock
 from behaviors.wander import Wander
 from creatures.parts import Fins, Tail
+from creatures.varieties import KOI_VARIETIES
 
 
 class Species:
@@ -20,7 +21,8 @@ class Species:
     - joints, link, widths: the spine. link is the distance between joints and
       widths the body width at each joint, both at size 100 (the base body).
     - angle_limit: the sharpest bend between consecutive joints, in radians.
-    - color_variants, spots: the fixed color sets and the spot rule (M6).
+    - varieties: the species' color varieties (creatures/varieties.py), at
+      least one. A fish's genome names one of them.
     - parts: part instances (creatures/parts.py), drawn under or over the body. Each has
       attach(creature) -> state and render(state, creature, bitmap).
     - motion: a Flock or Wander record. The pond builds one behavior per
@@ -39,8 +41,7 @@ class Species:
         widths,
         angle_limit,
         motion,
-        color_variants=(),
-        spots=None,
+        varieties,
         parts=(),
         lifespan_days=7,
         size_min=50,
@@ -58,9 +59,10 @@ class Species:
         self.link = link
         self.widths = widths
         self.angle_limit = angle_limit
+        if not varieties:
+            raise ValueError("%s: no varieties" % name)
         self.motion = motion
-        self.color_variants = color_variants
-        self.spots = spots
+        self.varieties = varieties
         self.parts = parts
         self.lifespan_days = lifespan_days
         self.size_min = size_min
@@ -79,6 +81,7 @@ KOI = Species(
     link=4,
     widths=(8, 10, 10, 10, 9, 8, 6, 5, 3, 2),
     angle_limit=pi / 8,
+    varieties=KOI_VARIETIES,
     # Pectoral pair behind the head and a forked tail
     parts=(
         Fins(joint=1, length=4),

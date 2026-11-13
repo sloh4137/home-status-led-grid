@@ -22,6 +22,7 @@ from behaviors.flocking import FlockingBehavior
 from creatures.fish_boid import FishBoid
 from creatures.species import KOI
 from creatures.spine_creature import SpineCreature
+from creatures.varieties import random_variety
 from graphics.vector import Vector
 
 WIDTH = HEIGHT = 64
@@ -57,7 +58,8 @@ def koi_flock(canvas, n, grid, steer_half=True):
                 KOI,
                 Vector(random.uniform(0, WIDTH), random.uniform(0, HEIGHT)),
                 random.choice((50, 100)),
-                6,
+                random_variety(KOI),
+                random.getrandbits(16),
             )
             for _ in range(n)
         ]

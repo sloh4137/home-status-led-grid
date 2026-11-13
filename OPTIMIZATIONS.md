@@ -469,3 +469,25 @@ in Python around it. Pond on the board, `DEBUG` stats over 4 lines:
     part, ~7 KB per size and fin color).
   - Recheck the per-koi cost with a full pond of 20 in M11. That's where it
     matters: at ~1.5 ms each, 20 fish are ~30 ms of render.
+
+### M6: koi varieties + spots
+
+Each koi now has a variety and seeded spots, drawn after the body as shared
+discs with the same native blit (`SpineCreature._place_spots` converts them to
+pixels on each size step, so a frame only lerps, offsets and blits). That's
+one extra blit per spot: 0 for the solid varieties, ≤ 4 for kohaku, ≤ 9 for
+sanke, 13 for asagi and 17 for shusui. Pond on the board, 3 koi with random
+varieties, `DEBUG` stats over 5 lines:
+
+| Setup | FPS | Physics (ms) | Render (ms) | Net avg / max (ms) | Refresh (ms) |
+| ----- | --- | ------------ | ----------- | ------------------ | ------------ |
+| M5.5b (for comparison) | 14.0–14.6 | 31.9–33.5 | 18.6–20.9 | 0.2–2.1 / 8.6 | 15.0–16.3 |
+| M6: varieties + spots | 12.9–14.4 | 31.8–34.9 | 20.2–24.0 | 0.2–2.3 / 8.9 | 15.0–16.4 |
+
+- Render is ~1.5–3 ms above M5.5b, in line with ~0.1 ms per blit for a
+  handful of spots across the 3 koi. Physics is unchanged.
+- The lowest FPS line (12.9) is also the one with the highest net time
+  (2.3 ms), so part of the spread is the HA poll, not the spots.
+- Cost depends on the variety mix. If a pond of 20 (M11) turns out
+  render-bound, the cheapest cut is `EDGES` at 5 per side instead of 7
+  (−4 blits per asagi/shusui).

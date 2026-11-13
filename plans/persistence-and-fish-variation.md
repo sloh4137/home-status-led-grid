@@ -433,6 +433,14 @@ Example: a lightning fish that appears only while the washing machine is running
 - `Species.color_variants` / `spots` become `Species.varieties`. `SpineCreature(species, origin, size, variety, seed)` takes the variety and seed directly until the genome exists (M9). The pond gives each koi `random_variety(KOI)` and a random seed.
 - `set_size` converts the spots to pixels; `render` draws them after the body.
 - `inherit_variety` is written and tested on the desktop here (it's pure data), but nothing calls it until M10.
+  - Done (desktop): `pattern.py` (`Zone`, the 5 presets, a 16-bit xorshift `(7, 9, 8)`, `make_spots`), `varieties.py` (`Variety`, `KOI_VARIETIES`, `find_variety`, `random_variety`, `inherit_variety`) and slots 7–12 (`WHITE`, `RED`, `BLACK`, `GOLD`, `SLATE`, `BRONZE`) in `colors.py`, with 13 spare. `Species.varieties` is required.
+  - `make_spots` returns **integers only**: `s` is 0–100 percent of the way to the next joint and `t` is −100..100 percent of the half-width. The same seed then gives the same tuple on both platforms; only `set_size` turns them into floats.
+  - A `LINE` zone's `t` is a tuple of **rows** (`DORSAL` `(0,)`, `EDGES` `(-100, 100)`, later `SCUTES` `(-100, 0, 100)`) and `count` is per row. `stagger=True` shifts odd rows by half a spacing, which is how `EDGES` alternates sides. `SCATTER` keeps `t` as a range.
+  - Spots are drawn as shared discs (`stamps.disc`, diameter `2 · radius · scale`), not `fill_region` squares, so they match the body and use the same native blit. Spots per koi: kohaku ≤ 4, sanke ≤ 9, asagi 13, shusui 17, solid varieties 0.
+  - `inherit_variety`'s `FAMILY` tier leaves out the parent itself, as in the table above. Over 100 000 kohaku births: 81.0 % kohaku, 16.3 % other gosanke, the rest spread by weight.
+  - Colors: `WHITE 0xD8D0C0`, `RED 0xD81E10`, `BLACK 0x2C2A2C` (the water peaks at ~`0x101719`), `GOLD 0xE8A010`, `SLATE 0x5A7FA8`, `BRONZE 0x8A5422`. They look right on the panel as they are.
+  - Checked from a rendered contact sheet of all 13 varieties (straight, turning, diagonal, sizes 50/100/110, 3 seeds) and a 3000-frame headless pond soak.
+  - Board: 12.9–14.4 fps, physics 31.8–34.9 ms, render 20.2–24.0 ms, against M5.5's 14.0–14.6 fps and 18.6–20.9 ms render (OPTIMIZATIONS.md "M6").
 - *Check:*
   - The koi show different varieties, and each one is recognisable on the panel: kohaku vs. sanke vs. showa, the tancho head spot, asagi's red sides.
   - Spots stay in place and inside the outline as the fish swim and turn, and at sizes 50 and 110.

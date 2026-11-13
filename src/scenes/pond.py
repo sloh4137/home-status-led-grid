@@ -8,6 +8,7 @@ from creatures.colors import CreatureColors
 from creatures.fish_boid import FishBoid
 from creatures.species import KOI, KOI_WANDER as KOI_WANDER_MOTION
 from creatures.spine_creature import SpineCreature
+from creatures.varieties import random_variety
 from graphics.vector import Vector
 from behaviors.flocking import FlockingBehavior
 from _imageload import load_image
@@ -24,7 +25,6 @@ POND_BRIGHTNESS = 0.1  # 0.0-1.0, applied to the pond sprite's palette
 # Everything draws into one canvas sharing the pond sprite's palette, so displayio
 # composites a single layer. The sprite only uses indices 0-5 of its 16, so creature
 # colors go in the free indices after them (creatures/colors.py).
-KOI_COLOR = colors.KOI_BLUE
 BOID_COLOR = colors.BOID
 
 # Background boids: independent flocks of BOIDS_PER_FLOCK, each small enough for
@@ -111,7 +111,18 @@ def create_scene(width=64, height=64):
             if KOI_WANDER and species is KOI:
                 motion = KOI_WANDER_MOTION
             behavior = behaviors[species] = motion.build(canvas, width, height)
-        behavior.add([SpineCreature(species, Vector(x, y), size, KOI_COLOR)])
+        # Until the genome (M9): a random variety and seed per fish
+        behavior.add(
+            [
+                SpineCreature(
+                    species,
+                    Vector(x, y),
+                    size,
+                    random_variety(species),
+                    random.getrandbits(16),
+                )
+            ]
+        )
     species_behaviors = list(behaviors.values())
 
     # Background boid flocks, each starting in its own third of the tank. They

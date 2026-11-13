@@ -6,6 +6,7 @@ from math import ceil, floor
 
 import bitmaptools
 
+from creatures.pattern import make_spots
 from creatures.spine import CreatureSpine
 from graphics import stamps
 
@@ -17,15 +18,25 @@ class SpineCreature(CreatureSpine):
     one pre-drawn disc per joint (graphics/stamps.py), so it keeps the same
     width at any heading and a frame does one native blit per joint.
 
-    Draw order is under parts (fins, tail), body, then over parts. The parts
-    are resolved here, so a frame does no per-species checks.
+    The variety (creatures/varieties.py) gives the body and fin colors and
+    the marking layers; the seed places the markings (creatures/pattern.py),
+    so the same seed always gives the same fish.
+
+    Draw order is under parts (fins, tail), body, spots, then over parts. The
+    parts are resolved here, so a frame does no per-species checks.
     """
 
-    def __init__(self, species, origin, size, color_index, fin_slot=None):
+    def __init__(self, species, origin, size, variety, seed):
         self.species = species
+        self.variety = variety
+        self.seed = seed
         self.size = 0
-        # Palette slot the parts draw with. Until varieties (M6) it's the body color.
-        self.fin_slot = color_index if fin_slot is None else fin_slot
+        # Palette slot the parts draw with
+        self.fin_slot = variety.fins
+        # Spots in body coordinates, [(joint, s, t, radius, slot)]; set_size
+        # turns them into pixels in self.spot_stamps
+        self.spots = make_spots(species, variety, seed)
+        self.spot_stamps = ()
         # Per-creature part state, and (part, state) pairs split by layer.
         # Filled by set_size.
         self.part_states = None
@@ -36,7 +47,7 @@ class SpineCreature(CreatureSpine):
             species.joints,
             ceil(species.link * size / 100),
             species.angle_limit,
-            color_index=color_index,
+            color_index=variety.base,
         )
         self.set_size(size)
 
@@ -74,6 +85,7 @@ class SpineCreature(CreatureSpine):
         else:
             states = [part.resize(states[i], self) for i, part in enumerate(parts)]
         self.part_states = states
+        self.spot_stamps = self._place_spots(scale)
         self.under = [(p, s) for p, s in zip(parts, states) if p.under]
         self.over = [(p, s) for p, s in zip(parts, states) if not p.under]
         reach = 0
@@ -85,11 +97,29 @@ class SpineCreature(CreatureSpine):
             max(max(species.widths) * scale, reach)
         )
 
+    def _place_spots(self, scale):
+        """
+        The spots at this size, as (joint, s, offset, o, disc): s is 0..1
+        toward the next joint, offset the pixels out along the normal, and o
+        the shift from the centre to the disc's corner. The offset is
+        t * (half-width - radius), so even t = +-100 keeps the disc inside the
+        outline and render never clips against the body.
+        """
+        widths = self.species.widths
+        out = []
+        for joint, s, t, radius, slot in self.spots:
+            f = s / 100
+            half = (widths[joint] * (1 - f) + widths[joint + 1] * f) * scale / 2
+            d = max(1, round(2 * radius * scale))
+            offset = t / 100 * max(0, half - d / 2)
+            out.append((joint, f, offset, d / 2 - 0.5, stamps.disc(d, slot)))
+        return tuple(out)
+
     def render(self, bitmap):
         """
         Draw the under parts, then a disc per joint sized by the species'
-        widths (plus the gap-filling discs on the narrow tail), then the over
-        parts.
+        widths (plus the gap-filling discs on the narrow tail), the spots,
+        then the over parts.
         """
         for part, state in self.under:
             part.render(state, self, bitmap)
@@ -120,5 +150,20 @@ class SpineCreature(CreatureSpine):
                 floor((jx[i - 1] + jx[i]) / 2 - o),
                 floor((jy[i - 1] + jy[i]) / 2 - o),
             )
+        # Spots: lerp toward the next joint, then out along this joint's
+        # normal (-uy, ux), so they bend with the spine
+        ux = self.ux
+        uy = self.uy
+        for j, f, off, o, stamp in self.spot_stamps:
+            x = jx[j]
+            y = jy[j]
+            cx = x + (jx[j + 1] - x) * f - uy[j] * off
+            cy = y + (jy[j + 1] - y) * f + ux[j] * off
+            x = floor(cx - o)
+            y = floor(cy - o)
+            if 0 <= x < width and 0 <= y < height:
+                blit(bitmap, stamp, x, y, skip_source_index=0)
+            else:
+                stamps.blit(bitmap, stamp, x, y)
         for part, state in self.over:
             part.render(state, self, bitmap)
