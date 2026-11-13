@@ -122,6 +122,9 @@ so after a restart every fish starts at a random spot.
 - High CO2 drains the color out of the pond (fish and water), in visible
   steps: full color at 800 ppm or below, down to 20 % saturation at
   2000 ppm.
+- It also slows every moving thing (fish and boids) over the same range,
+  down to 0.4x at 2000 ppm, easing in over a few seconds. Aging and the
+  water animation keep real time, so bad air doesn't make fish live longer.
 
 ### Genome fields
 

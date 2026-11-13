@@ -239,6 +239,7 @@ The water animation, the behaviors, the zaps, the eel flicker, the text panels a
 
 **M2: Global speed factor.**
 - `speed` in the scene, eased; `Pond.update(dt, motion_dt)`; boids on `motion_dt`.
+  - Done: `speed_for_level(level)` in `scenes/pond.py`, `Pond.tick_clock(dt)` split out of `Pond.update` (M7 reuses it). Headless at 2000 ppm: boids move at 0.39× (36.4 → 14.1 px/s), the ease reaches 0.45 in ~5 s, pond hours per 20 s are the same (20 vs 20) at 400 and 2000 ppm, and the flocks hold together (mean distance to flock centre 5.9 px → 7.6 px). Frame time on the board still to check.
 - *Check:*
   - At 2000 ppm everything moves at about 0.4× and the change eases in over a few seconds.
   - With `POND_TIME_SCALE`, aging runs at the same rate at 400 and 2000 ppm.

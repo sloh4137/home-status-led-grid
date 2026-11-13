@@ -6,7 +6,7 @@ species, and the lifecycle that ages, breeds and kills them.
                           time_scale=pond_time_scale(settings),
                           on_change=store.mark_dirty)
     store.provide("pond", pond.to_dict)
-    pond.update(dt)
+    pond.update(dt, motion_dt)
 
 ``from_dict`` validates the saved section (creatures/genome.py); a missing
 or unusable section gives a fresh pond. The pond is only built at startup,
@@ -245,18 +245,30 @@ class Pond:
 
     # ------------------------------------------------------------ lifecycle
 
-    def update(self, dt):
-        self._clock += dt
-        if self._clock >= TICK_SECONDS:
-            self.tick(self._clock * self.time_scale)
-            self._clock = 0.0
+    def update(self, dt, motion_dt=None):
+        """
+        One frame: the lifecycle clock on the real dt, then the eggs and the
+        fish. The behaviors run on motion_dt (dt by default), which the scene
+        slows with bad air; aging doesn't slow with it.
+        """
+        self.tick_clock(dt)
+        if motion_dt is None:
+            motion_dt = dt
         # Eggs lie on the bottom, under every fish
         if self.eggs:
             sprite = egg_sprite()
             for x, y in self.eggs.values():
                 stamps.blit(self.canvas, sprite, x, y)
         for behavior in self.behaviors:
-            behavior.update(dt)
+            behavior.update(motion_dt)
+
+    def tick_clock(self, dt):
+        """The lifecycle half of update: count real seconds, tick once per
+        TICK_SECONDS."""
+        self._clock += dt
+        if self._clock >= TICK_SECONDS:
+            self.tick(self._clock * self.time_scale)
+            self._clock = 0.0
 
     def tick(self, pond_seconds):
         """Advance the pond's clock; ages move in whole hours."""

@@ -5,7 +5,7 @@ Scene with procedural generated fish
 from _dio import dio
 from config import pond_time_scale
 from creatures import colors
-from creatures.colors import PondColors
+from creatures.colors import MAX_LEVEL, PondColors, co2_level
 from creatures.fish_boid import FishBoid
 from creatures.species import KOI, KOI_WANDER as KOI_WANDER_MOTION
 from graphics.vector import Vector
@@ -34,6 +34,20 @@ BOIDS_PER_FLOCK = 10
 
 # Try the koi on WanderBehavior instead of flocking
 KOI_WANDER = False
+
+# CO2 -> speed: every moving thing runs on dt * speed, from 1.0 in clean air
+# down to MIN_SPEED at MAX_LEVEL, in tenths. The lifecycle clock and the water
+# animation stay on the real dt.
+MIN_SPEED = 0.4
+# How fast speed eases toward its target, per second, so a 0.1 step in the
+# target takes a few seconds instead of showing as a sudden slowdown
+SPEED_EASE = 0.5
+
+
+def speed_for_level(level):
+    """1.0 at level 0, down to MIN_SPEED at MAX_LEVEL, in whole tenths."""
+    span = 10 - int(MIN_SPEED * 10 + 0.5)
+    return (10 - (level * span + MAX_LEVEL // 2) // MAX_LEVEL) / 10
 
 
 def draw_frame(canvas, sprite, x, y):
@@ -88,7 +102,8 @@ def create_scene(width=64, height=64, store=None, config=None):
     Build the scene. Returns (group, update(dt), set_sensors(values)) for the
     main loop. set_sensors gets the whole sensor values dict whenever it
     changes; the CO2 level drains the color out of the pond (creatures and
-    water).
+    water) and slows every moving thing (speed_for_level), easing in over a
+    few seconds.
 
     The fish come from the store's ``pond`` section (behaviors/lifecycle.py),
     or a fresh pond without one; the store then saves the pond with the rest
@@ -158,13 +173,32 @@ def create_scene(width=64, height=64, store=None, config=None):
         )
         boid_flocks.append(flock)
 
+    # [current speed, target speed]
+    speed = [1.0, 1.0]
+
+    def set_sensors(values):
+        level = co2_level(values)
+        pond_colors.set_step(colors.saturation_step(level))
+        target = speed_for_level(level)
+        if target != speed[1]:
+            speed[1] = target
+            print("pond: speed -> %.1f" % target)
+
     def update(dt):
+        current, target = speed
+        if current != target:
+            current += (target - current) * min(1.0, dt * SPEED_EASE)
+            # Snap the last sliver so the ease ends
+            if abs(target - current) < 0.005:
+                current = target
+            speed[0] = current
+        motion_dt = dt * current
         # The background goes first: it erases last frame's creatures, then each
         # behavior draws its creatures on top
         update_pond(dt)
         draw_pond(canvas)
-        pond.update(dt)
+        pond.update(dt, motion_dt)
         for flock in boid_flocks:
-            flock.update(dt)
+            flock.update(motion_dt)
 
-    return group, update, pond_colors.set_sensors
+    return group, update, set_sensors
