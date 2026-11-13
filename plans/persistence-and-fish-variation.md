@@ -5,7 +5,8 @@ The pond has one hard-coded koi type drawn in a single color, plus the backgroun
 
 - **Species**: koi, catfish, sturgeon and turtle, with room for more. Each species is a data record, not a subclass. A new species is one table entry. Only a new *kind* of part (tentacles, say) needs new code.
 - **Fixed color varieties with persistent spots.** Each fish has a variety modelled on real koi (kohaku, sanke, showa, asagi…): a base color plus up to two marking colors placed by a few generic zone rules, and its spots stay in the same place on its body. Unlike OpenMatrix, the hue never changes per segment. The only color change is a global brightness shift with CO2.
-- **Genomes and a lifecycle.** A fish grows to its own maximum size, which is inherited from its parent with a random variation and capped per species. A parent breeds its own species, with a small chance of a different one. Turtles are slower and live longer.
+- **Genomes and a lifecycle.** A fish grows to its own maximum size, which is inherited from its parent with a random variation and capped per species. A parent breeds its own species, with a small chance of a different one. The pond holds at most 10 fish (`MAX_FISH`) plus exactly one turtle.
+  - **The turtle is a loner.** It's slower, lives longer, never breeds and doesn't count toward `MAX_FISH`. When it dies, a turtle egg appears and hatches into a new turtle with completely random stats: nothing is inherited.
 - **Persistence.** One JSON document holds the menu settings and, as a separate object, the pond genomes.
   - The board saves it to `microcontroller.nvm`, using a dirty flag and a throttle: at most once per `PERSIST_SECONDS`, default 60.
   - The desktop simulator saves the same document to `state.json`.
@@ -42,7 +43,7 @@ The background boids stay ambient, with flat arrays and no genome (see LEARNINGS
   - Unknown keys and invalid fish are dropped: unknown species, a `variety` the species doesn't have, non-integers. Each drop is printed on the serial console with the reason.
   - Sizes are clamped to the species range.
   - An unparseable document means defaults.
-- Size: about 120 bytes per fish × 20 fish + settings ≈ 2.5–3 KB of compact JSON.
+- Size: about 120 bytes per fish × 11 (10 fish + the turtle or its egg) + settings ≈ 1.5–2 KB of compact JSON.
 - Pretty-printed (indented) when dumped or written to the desktop file, so it's easy to edit. Compact in nvm.
   - CircuitPython's `json.dumps` has no `indent`, so `document.dumps(pretty=True)` is a small hand-written printer (M2). Objects get one key per line, and each list item is one compact line, so each fish will read as one line.
 
@@ -125,6 +126,8 @@ Planned species. All numbers are starting points to tune on the panel:
 | sturgeon | 12 joints, narrow (`widths` ≤ 6) | `Snout(length=4)`: extra narrow joints ahead of the head | `Wander`: long, smooth turns (low turn rate, small `angle_limit`) | 14 d | 130 |
 | turtle | 3 joints | `Shell(rx=4, ry=3)`, `Flippers()` | `Wander`: ~1/4 koi speed, long pauses | 30 d | 90 |
 
+The turtle is `solo=True` (a `Species` flag, default `False`), which the lifecycle reads as: exactly one at a time, outside `MAX_FISH`, no breeding, never in anyone's `offspring_odds`, and replaced by an egg on death (see Lifecycle).
+
 ### Genome fields (integers only)
 Integers only keep hand edits simple and the dumps exact. CircuitPython floats are 32-bit, so `0.92` could be dumped as `0.9200001`.
 
@@ -134,7 +137,8 @@ Integers only keep hand edits simple and the dumps exact. CircuitPython floats a
 - `seed`: 0–65535. Spots are regenerated from it and never stored. Changing it rerolls the spots.
 - `max_size`: percent of the species' base body, clamped to `[size_min, size_cap]`.
 - `age_hours`: hours rather than minutes, so aging alone marks the document dirty at most once an hour.
-- `offspring`: births so far, max 2.
+- `offspring`: births so far, max 2. Always 0 for the turtle.
+- **An egg is a turtle genome with a negative `age_hours`**: it counts up to 0 and hatches. That keeps the egg in the same record, persisted and hand-editable like any fish (set `-1` to hatch it within the hour), with no extra field.
 
 ### Growth and max size
 - Current size = `max_size × growth(age)`. `growth` rises from 30 % at birth to 100 % at 30 % of the lifespan, then holds.
@@ -245,7 +249,7 @@ These reuse the shared zones where they fit and add a zone or two of their own. 
 | catfish | plain | bronze | — | the common one |
 | catfish | mottled | bronze | black `MOTTLE` (6–10 specks, r 15 %, 0–90 %) | a catfish-only zone: many small dark specks |
 | catfish | albino | white | — | rare (low weight) |
-| sturgeon | plain | slate | white `SCUTES` | a sturgeon-only zone: `line`, `t` = 0 and ±1, radius 0 (1 px), so the three rows of bony plates read as dotted stripes. Uses only existing modes |
+| sturgeon | plain | slate | white `SCUTES` | a sturgeon-only zone: `line`, `t` = 0 and ±1, radius 0 (1 px), 5 per row, staggered, so the three rows of bony plates read as dotted stripes. Uses only existing modes |
 | turtle | — | — | — | the shell is a sprite: its pattern lives in the shell zones, baked into the sprite (see Spots), and the body uses the plain base |
 
 - None of these need a new mode. A banded or striped species later (a "tiger" special fish) would add a `band` mode: one full-width bar across the body at a span, i.e. `t` covering −1..1 in one wide spot.
@@ -277,7 +281,7 @@ These reuse the shared zones where they fit and add a zone or two of their own. 
 ### Generic body — `creatures/spine_creature.py`
 Replaces `Fish`. It is built from `(species, genome)`, draws the width profile from the species, then the spots, then the parts. `fish.py` is removed once the koi has been ported to it.
 
-- **Spine update with plain floats** (M3.5, in `CreatureSpine` in `creatures/spine.py`, so `spine_creature.py` inherits it). For ~20 fish, the spine is likely to cost more than any neighbour search; the M3 bench measured ~5 ms per koi per frame in `set_state`, against ~0.4 ms of steering. Today the behaviors push state through the default `Creature.set_state`, which calls `CreatureSpine.move(Vector)`. That allocates several `Vector`s per joint per frame and calls `heading()`/`from_angle()` (trig) per joint. At ~20 fish × ~10 joints, that's thousands of allocations a frame.
+- **Spine update with plain floats** (M3.5, in `CreatureSpine` in `creatures/spine.py`, so `spine_creature.py` inherits it). For ~10 fish, the spine is likely to cost more than any neighbour search; the M3 bench measured ~5 ms per koi per frame in `set_state`, against ~0.4 ms of steering. Today the behaviors push state through the default `Creature.set_state`, which calls `CreatureSpine.move(Vector)`. That allocates several `Vector`s per joint per frame and calls `heading()`/`from_angle()` (trig) per joint. At ~10 fish × ~10 joints, that's over a thousand allocations a frame.
   - Override `set_state` and keep the joints in flat `jx`/`jy` lists.
   - Follow the leader with `dx, dy = prev - cur`, `d = sqrt(dx² + dy²)`, `cur = prev - (dx, dy) · link / d`. That's one `sqrt` per joint and no allocations.
   - Keep the angle constraint, but don't compute it with angles. Compare the dot product of consecutive link directions with `cos(angle_limit)`, and only fall back to rotating (trig) when a joint goes past the limit, which is rare when swimming smoothly.
@@ -319,13 +323,17 @@ The rule from OPTIMIZATIONS.md still applies: method calls and allocations are w
 - `Pond` owns the genomes and one behavior per species, built from `species.motion` (see Behaviors). Mixed species never flock together.
 - Once per second (not per frame), scaled by `POND_TIME_SCALE`:
   - Add elapsed time to each age and step growth.
-  - Roll breeding: a fish breeds at 50–90 % of its lifespan, at most 2 offspring, at most one birth per second, and only while population < `MAX_FISH` (20).
+  - Roll breeding: a fish breeds at 50–90 % of its lifespan, at most 2 offspring, at most one birth per second, and only while population < `MAX_FISH` (10). The turtle doesn't count and never breeds.
   - Skip any species with `lifecycle=False` (see the Species note in Future ideas). Those fish don't age, breed or die, and don't count toward `MAX_FISH`.
   - A fish dies at 100 % of its lifespan, ± 10 % rolled once per fish.
+- **The turtle and its egg** (`solo` species):
+  - When the turtle dies, an egg appears at a random spot on screen: a genome with `age_hours = -EGG_HOURS` (module constant, about 12 pond hours, so it's seen with `POND_TIME_SCALE`). It's drawn as a small static sprite (an off-white oval, a few pixels) and doesn't move; it isn't added to any behavior.
+  - The egg ages like a fish. At `age_hours` 0 it hatches in place into a turtle with **completely random stats**: `random_variety(TURTLE)`, `max_size` uniform in `[size_min, size_cap]`, a new seed and a new id. Nothing comes from the old turtle, so there's no `make_offspring` call.
+  - The loader keeps exactly one turtle-or-egg: extra ones are dropped with a printed reason, and if there's none (a hand edit removed it, or an old save), it adds an egg.
 - Avoid OpenMatrix's bugs: death removes the fish (it doesn't reset age to 0), and the offspring count is persisted.
 - Births and deaths use `SwimBehavior.add`/`remove` (see Behaviors).
 - `Pond.from_dict(d)` / `to_dict()`. The pond is only built from a document at startup, since edits are restart-only, so there is no live re-apply.
-- A fresh pond (no saved state) starts with a few random koi and one of each other species, so everything is visible.
+- A fresh pond (no saved state) starts with a few random koi, one catfish, one sturgeon and the turtle (hatched, not an egg), so everything is visible.
 
 ## Future ideas (not in this plan, but the design leaves room for them)
 
@@ -421,7 +429,7 @@ Example: a lightning fish that appears only while the washing machine is running
   - **Body**: one pre-drawn disc per joint instead of a square, so the width is the same at any heading and the head and tail are round. Joints whose disc is narrower than the link get a second disc at the midpoint, which closes the beading on the tail. Koi widths are now `(8, 10, 10, 10, 9, 8, 6, 5, 3, 2)` for a smooth taper.
   - The first version drew the fins as 17 lines per koi per frame and dropped the board to 12.8–13.3 fps (render 23.7–29.4 ms, against M5's 11.1–17.8). The fins and tail are now solid shapes made of discs, drawn per frame with no per-heading images (OPTIMIZATIONS.md "M5.5").
   - Tuned from rendered stills at sizes 50/100/110, straight, diagonal, turning and half off-screen. A 3000-frame headless pond soak runs clean.
-  - Board: 14.0–14.6 fps, render 18.6–20.9 ms, against M5's 14.4–16.1 fps and 11.1–17.8 ms. That's ~1.5 ms per koi for 22 blits. Accepted for now; the cheaper options are listed in OPTIMIZATIONS.md "M5.5" and get revisited with a full pond in M11.
+  - Board: 14.0–14.6 fps, render 18.6–20.9 ms, against M5's 14.4–16.1 fps and 11.1–17.8 ms. That's ~1.5 ms per koi for 22 blits. Accepted for now; the cheaper options are listed in OPTIMIZATIONS.md "M5.5" and get revisited with a full pond (10 fish + turtle) in M11.
 - *Check:*
   - The fins stay attached on tight turns, and the tail sweeps with the spine.
   - Fins and tail scale with `set_size` (try 50 and 110).
@@ -460,11 +468,11 @@ Example: a lightning fish that appears only while the washing machine is running
   - `Whiskers(length, spread=95, forward=0.5, out=0.8, stiffness=0.6)`: one mirrored pair of 1 px link chains rooted at the mouth corners, drawn as single pixels over the body. Each link blends the direction it trails with a rest direction by `stiffness`, so they settle swept out and slightly back, drag back while swimming and swing out on turns. The chain moves in `render` (a part's only per-frame hook), so an off-screen catfish keeps a stale shape. Every link is re-placed exactly one link from the one before, so the chain swings back without stretching.
   - **Spot radii are now relative to the body**: a percent of the species' widest half-width instead of pixels, capped at the local body width. The koi's widths went from max 10 to max 8, and its fixed-pixel patches (up to 6 px) covered the body and spilled past it at the tail. The presets are the old values on the 10 px koi (`PATCHES` 40–60 %, `SPECKS` / `EDGES` / `DORSAL` 20 %, `HEAD` 40 %), so a 10 px body looks as before; `MOTTLE` is 15 %. Seeds give the same placements, since `make_spots` draws the same number of values. On the 8 px koi, 20 % still rounds to 2 px, so asagi and shusui are a little busier.
   - Desktop render per fish (20 on screen, Blinka): koi 0.83 ms, catfish 1.03 ms (14 whisker pixels written from Python), sturgeon 0.43 ms. A 3000-frame headless pond soak runs clean.
-  - Board: 10.8–11.3 fps, physics 36.3–37.2 ms, render 33.0–37.1 ms, against M6's 12.9–14.4 fps and 20.2–24.0 ms render (OPTIMIZATIONS.md "M7"). About 2.5 fps below M6; the cheapest cuts are listed there for M11.
+  - Board: 10.8–11.3 fps, physics 36.3–37.2 ms, render 33.0–37.1 ms, against M6's 12.9–14.4 fps and 20.2–24.0 ms render (OPTIMIZATIONS.md "M7"). About 2.5 fps below M6. `SCUTES` at 5 per row, staggered (14 pixels instead of 21), made no measurable difference. `bench_render.py` shows every drawn item costs ~0.1–0.15 ms on the board (blit or pixel write alike), and the catfish's whiskers ~2 ms (OPTIMIZATIONS.md "Render cost per item").
 - *Check:* both are recognisable at 64×64, the whiskers trail on turns, and the fps stays near the M6 value.
 
 **M8: Turtle.**
-- Add `Shell` (pre-drawn, spots baked in), `Flippers`, and the slow turtle behavior.
+- Add `Shell` (pre-drawn, spots baked in), `Flippers`, and the slow turtle behavior. The species gets `solo=True`; the egg and its hatching come in M10 with the rest of the lifecycle.
 - *Check:* the turtle swims slowly, the shell rotates smoothly through its pre-drawn headings, and memory use for the sprites is recorded.
 
 **M9: Genome, growth, max size, pond persistence.**
@@ -475,10 +483,12 @@ Example: a lightning fish that appears only while the washing machine is running
   - Adding a fish by hand works, and invalid or duplicate entries are dropped with a printed reason.
 
 **M10: Lifecycle + reproduction.**
-- Add aging, breeding, `make_offspring` (inherited size ± 10 %, the same/family/new variety tiers via `inherit_variety`, rare species switch), death, `MAX_FISH` and `POND_TIME_SCALE`.
+- Add aging, breeding, `make_offspring` (inherited size ± 10 %, the same/family/new variety tiers via `inherit_variety`, rare species switch), death, `MAX_FISH` (10) and `POND_TIME_SCALE`.
+- Add the turtle egg: on the turtle's death an egg genome (`age_hours = -EGG_HOURS`) with its sprite, hatching into a random turtle, and the loader's one-turtle-or-egg rule.
 - *Check:*
   - Over many births in the simulator, the variety split is roughly 80 / 15 / 5 (print the tier on each birth with `DEBUG`).
-  - With a high `POND_TIME_SCALE` in the simulator, fish are born small, grow to their own max sizes, breed and die. The population stays ≤ 20.
+  - With a high `POND_TIME_SCALE` in the simulator, fish are born small, grow to their own max sizes, breed and die. The population stays ≤ 10 fish plus the turtle.
+  - The turtle dies, an egg appears, and it hatches into a turtle with different random stats. The egg survives a restart, and there's never more than one turtle or egg.
   - Births and deaths mark the document dirty, and the offspring count survives a restart.
   - A pond bred in the simulator copies to the board with `deploy.sh --state state.json`.
 
@@ -488,7 +498,7 @@ Example: a lightning fish that appears only while the washing machine is running
   - the edit loop (pull → edit → deploy/drag → auto-reload), including the WSL2 serial note
   - a genome field reference with the species names and valid ranges
   - that the simulator's `state.json` uses the same format
-- `OPTIMIZATIONS.md`: save cost (JSON + nvm), per-species render cost, and fps with a full pond of 20.
+- `OPTIMIZATIONS.md`: save cost (JSON + nvm), per-species render cost, and fps with a full pond (10 fish + the turtle).
 - LEARNINGS.md: tick the "Doing it for real" and "Creature architecture" items that are now done, and update the persistence section with the nvm findings.
 
 ## Files

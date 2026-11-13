@@ -67,7 +67,9 @@ MOTTLE = Zone(count=(6, 10), radius=15, span=(0, 90), t=(-100, 100))
 # Sturgeon: the three rows of bony plates (back and both sides) as dotted
 # stripes. Radius 0 is a single pixel at any size, so the rows stay apart
 # on the narrow body.
-SCUTES = Zone(count=7, radius=0, span=(5, 85), t=(-100, 0, 100), mode=LINE)
+SCUTES = Zone(
+    count=5, radius=0, span=(5, 85), t=(-100, 0, 100), mode=LINE, stagger=True
+)
 
 
 class XorShift:

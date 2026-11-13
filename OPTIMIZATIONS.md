@@ -511,7 +511,58 @@ per link. Both are on `WanderBehavior` (catfish edge hugging included).
   ~0.1–0.15 ms each seen in M5.5/M6, plus the whiskers. Physics is up
   ~3 ms for two more spines (the sturgeon's has 12 joints) and the wander
   steering.
-- FPS drops ~2.5 below M6, more than "near M6". Cheapest cuts, if a full
-  pond (M11) needs them: the sturgeon's 20 scutes as direct `bitmap[x, y]`
-  writes instead of 1 px blits, or fewer scutes per row (7 → 5, −6); its
-  long pectorals at 3 discs instead of 4 per side (−2).
+- FPS drops ~2.5 below M6, more than "near M6".
+- M7b: `SCUTES` at 5 per row instead of 7, staggered so the three rows don't
+  line up into crossbars (14 pixels instead of 21), and 1 px spots written
+  with `bitmap[x, y] = slot` instead of blitted. No change on the board:
+  10.7–11.2 fps, physics 36.3–39.7 ms, render 32.9–38.9 ms. Tried and
+  dropped: the sturgeon's long pectorals at 3 discs instead of 4 per side,
+  since three 2 px discs can't cover a 7 px fin and its tip came loose as a
+  dot on a diagonal.
+
+#### Render cost per item (`bench_render.py`)
+
+The board, one fish fully on screen at size 100, ms per call:
+
+| Fish | Full | Body (discs) | Spots (count) | Parts | Spine |
+| ---- | ---- | ------------ | ------------- | ----- | ----- |
+| koi kohaku | 3.74 | 1.87 (13) | 0.41 (2) | fins 0.61, tail 0.88 | 0.71 |
+| koi shusui | 5.17 | 1.90 (13) | 1.77 (17) | fins 0.62, tail 0.95 | 0.71 |
+| catfish plain | 4.97 | 1.67 (10) | 0 | fins 0.62, tail 0.77, whiskers 2.00 | 0.68 |
+| catfish mottled | 6.02 | 1.72 (10) | 0.96 (7) | fins 0.60, tail 0.79, whiskers 1.93 | 0.65 |
+| sturgeon | 6.05 | 1.68 (14) | 1.92 (14 px) | fins 0.96 + 0.63, tail 0.79, snout 0.52 | 0.89 |
+
+Pond water background: 4.59 ms.
+
+- **Every drawn item costs ~0.1–0.15 ms, whatever draws it.** A spot blit
+  is 0.10 ms (shusui), a body disc 0.14, a fin or tail disc ~0.15, and a
+  1 px `bitmap[x, y]` write 0.14 (sturgeon), *slower* than blitting a 1 px
+  disc. The cost is the Python per item (loop, float math, the call), not
+  the blit, so the pixel-write path was reverted. Cutting render time means
+  cutting the number of items.
+- Disc size barely matters: the catfish's 10 discs up to 10 px wide cost
+  less than the koi's 13 smaller ones.
+- The catfish's whiskers (2 × 5 chain links with a `sqrt` each, plus 12
+  pixel writes) are its most expensive part at ~2 ms, more than its body.
+- The spine update is 0.65–0.9 ms per fish; for 5 fish that's ~3.7 ms of
+  the ~37 ms physics.
+
+#### Open options (not applied; kept as-is for the look)
+
+Render cost scales with the number of drawn items (~0.1–0.15 ms each), so
+these are the cuts to reach for if the full pond (10 fish + the turtle,
+M11) is too slow. Savings are from the table above; rerun
+`bench_render.py` after any change.
+
+| Cut | Saves | Look |
+| --- | ----- | ---- |
+| `Tail` lobes at 2 discs instead of 3 (every species) | ~0.3 ms per fish | shorter, blunter fork |
+| Sturgeon `SCUTES` back row only (5 instead of 14) | ~1.2 ms | spots down the back only, not the sides |
+| `Whiskers` chain stepped every other frame (pixels still drawn every frame) | ~0.4 ms per catfish (estimate: the chain math is roughly the half of the 2 ms that isn't pixel writes) | shape lags a frame on turns |
+| `Whiskers(length=3)` instead of 4.5 (4 pixels each instead of 6) | ~0.6 ms per catfish | shorter whiskers |
+| `EDGES` at 5 per side instead of 7 (asagi, shusui; see M6) | ~0.4 ms per fish | sparser side markings |
+| Long `Fins` at 3 discs instead of 4 | ~0.3 ms per sturgeon | tried in M7b: the tip comes loose on a diagonal; would need a wider tip disc |
+
+Not worth it: drawing 1 px spots with `bitmap[x, y]` (0.14 ms per pixel,
+slower than a 1 px blit at 0.10 ms), and shrinking discs (size barely
+changes a blit's cost).
