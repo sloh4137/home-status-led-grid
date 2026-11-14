@@ -42,6 +42,8 @@ class WanderBehavior(SwimBehavior):
         Near a wall (outside the safe rectangle) the target turn points the
         creature back towards the middle of the tank, and the wall push applies.
         Keep min_speed above 0, or a paused creature loses its heading.
+        With walls off (SwimBehavior.walls) neither the turn back nor the push
+        applies, so a creature wanders out of the tank.
 
         Edge hugging (the catfish), on when hug_distance > 0: a hugging creature
         swims along the nearest screen edge, hug_distance px in from it, and
@@ -137,6 +139,7 @@ class WanderBehavior(SwimBehavior):
         safe_right = self.safe_right
         safe_top = self.safe_top
         safe_bottom = self.safe_bottom
+        walls = self.walls
         center_x = self.center_x
         center_y = self.center_y
         hug_distance = self.hug_distance
@@ -173,7 +176,9 @@ class WanderBehavior(SwimBehavior):
             vx = vxs[i]
             vy = vys[i]
             target = target_turns[i]
-            near_wall = not (safe_left < x < safe_right and safe_top < y < safe_bottom)
+            near_wall = walls and not (
+                safe_left < x < safe_right and safe_top < y < safe_bottom
+            )
             if hug_on and hugging[i]:
                 speed = sqrt(vx * vx + vy * vy)
                 # The nearest screen edge: its distance d and inward normal

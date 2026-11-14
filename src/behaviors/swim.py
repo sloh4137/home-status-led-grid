@@ -75,6 +75,10 @@ class SwimBehavior(Behavior):
         # How far past the window edge a creature can be and still draw a pixel on
         # screen. +1 covers flooring the position to a pixel.
         self.render_margin = 1
+        # Wall switch. A visitor (scenes/visitors.py) turns it off to leave:
+        # with no wall push and no turn back from the walls, it wanders out
+        # of the tank. Subclasses' _steer honours it (WanderBehavior does).
+        self.walls = True
 
     # ------------------------------------------------------------ membership
 

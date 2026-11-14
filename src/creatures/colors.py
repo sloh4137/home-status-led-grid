@@ -6,8 +6,10 @@ indices 0-5, so every creature color, across all species, lives in the slots
 after it. Species refer to these slot numbers, never to RGB values, so a
 saturation change is one palette write per slot with no per-creature cost.
 
-The last RESERVED slots are kept free for the future special fish and the
-boid zaps (see plans/persistence-and-fish-variation.md "Future ideas").
+The last RESERVED slots aren't in BASE_RGB: ELECTRIC (the electric eel's
+flicker) and ZAP (the zaps between boids) are written every frame by their
+effect while it's live, through desaturate() so they go gray with the rest
+(plans/ha-pond-effects.md).
 """
 
 FIRST_SLOT = 6  # after the pond water's 0-5
@@ -26,6 +28,9 @@ GOLD = 10
 SLATE = 11
 BRONZE = 12
 OLIVE = 13
+# Reserved, written per frame by their effects
+ELECTRIC = 14
+ZAP = 15
 
 # (slot, base 0xRRGGBB) at full brightness
 BASE_RGB = (

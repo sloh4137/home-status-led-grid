@@ -23,7 +23,7 @@ import gc
 import time
 
 from _dio import dio
-from creatures.species import CATFISH, KOI, STURGEON, TURTLE
+from creatures.species import CATFISH, ELECTRIC_EEL, KOI, STURGEON, TURTLE
 from creatures.spine_creature import SpineCreature
 from creatures.varieties import find_variety
 from graphics.vector import Vector
@@ -32,7 +32,7 @@ WIDTH = HEIGHT = 64
 FRAMES = 50
 
 # (species, variety): a plain and a spotted koi, both catfish looks with
-# spots, and the sturgeon
+# spots, the sturgeon, both turtles and the electric eel
 CASES = (
     (KOI, "kohaku"),
     (KOI, "shusui"),
@@ -41,6 +41,7 @@ CASES = (
     (STURGEON, "plain"),
     (TURTLE, "slider"),
     (TURTLE, "box"),
+    (ELECTRIC_EEL, "electric"),
 )
 
 

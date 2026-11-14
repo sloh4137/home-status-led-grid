@@ -70,6 +70,11 @@ MOTTLE = Zone(count=(6, 10), radius=15, span=(0, 90), t=(-100, 100))
 SCUTES = Zone(
     count=5, radius=0, span=(5, 85), t=(-100, 0, 100), mode=LINE, stagger=True
 )
+# Electric eel: two staggered rows of single-pixel electric spots along the
+# flanks, from behind the head to near the tail
+EEL_SPOTS = Zone(
+    count=6, radius=0, span=(10, 85), t=(-100, 100), mode=LINE, stagger=True
+)
 
 # Turtle shell zones, in shell coordinates (see parts.Shell): span runs from
 # the front of the oval (0) to the back (100) and t across it. The plates

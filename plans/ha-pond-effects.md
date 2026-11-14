@@ -258,6 +258,7 @@ The water animation, the behaviors, the zaps, the eel flicker, the text panels a
 
 **M4: Visitors + electric eel.**
 - `Visitor` manager, `walls` switch, eel species and look, the `ELECTRIC` slot and its flicker.
+  - Done (desktop): `build(canvas, w, h)` returns the behavior. Its one creature is `behavior.creatures[0]`. The eel's spine is laid out behind its heading at the entry point, so at the top edge it doesn't hang onto the screen. 14 joints at link 2.5 (about 32 px), widths ≤ 4, `angle_limit` π/6. Only `WanderBehavior` honours `walls`, which is all the visitors use. The flicker picks a new color every 2–3 frames, not every frame, so it writes the palette less often. At 2200 ppm the table goes gray-blue and off-white. **Walls tuned**: at `outside_window_size` 20 the eel's head was on screen only 60 % of the time, so it's now 5, with `wall_avoid_distance` 30, for 96–97 %. Headless, 40 leaves: every one swam off on its own in 4.1 s on average (6.7 s max), with no timeouts. A returning washer turns the walls back on (`visitor: eel stays`), and an unavailable sensor makes it leave after the delay. `bench_render.py` on the desktop: eel 0.25 ms full (18 discs, 11 spots). Still to check on the board: the flicker, the bench row, and `DEBUG` with and without the eel.
 - *Check:*
   - The eel swims in from an edge, darts around, and leaves off screen after the off delay. The timeout fallback works (force it with a tiny `LEAVE_TIMEOUT`).
   - The flicker reads as electric on the panel and goes gray with high CO2.
