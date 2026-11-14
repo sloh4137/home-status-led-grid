@@ -3,7 +3,7 @@ Scene with procedural generated fish
 """
 
 from _dio import dio
-from config import pond_time_scale
+from config import Settings, pond_time_scale, zap_max_watts, zap_min_watts
 from creatures import colors
 from creatures.colors import MAX_LEVEL, PondColors, co2_level
 from creatures.fish_boid import FishBoid
@@ -13,6 +13,8 @@ from behaviors.flocking import FlockingBehavior
 from behaviors.lifecycle import Pond
 from _imageload import load_image
 from graphics.graphics_helpers import dim_palette, make_canvas
+from scenes.effects import zap_rate
+from scenes.visitors import Visitors, visitors_from, watts
 
 import bitmaptools
 import random
@@ -103,14 +105,16 @@ def create_scene(width=64, height=64, store=None, config=None):
     main loop. set_sensors gets the whole sensor values dict whenever it
     changes; the CO2 level drains the color out of the pond (creatures and
     water) and slows every moving thing (speed_for_level), easing in over a
-    few seconds.
+    few seconds. The washer's and printer's plug power call in visitors
+    (scenes/visitors.py) and the house's total power sets the zap rate
+    (scenes/effects.py); for now both only print on the console.
 
     The fish come from the store's ``pond`` section (behaviors/lifecycle.py),
     or a fresh pond without one; the store then saves the pond with the rest
     of the document. A fresh or repaired pond marks the store dirty, so the
     fixed version is what gets saved, and so does every change the lifecycle
     makes (aging, births, deaths). config (settings.toml) gives
-    POND_TIME_SCALE.
+    POND_TIME_SCALE, the plugs' on watts and the zap power range.
     """
 
     group = dio.Group()
@@ -176,6 +180,13 @@ def create_scene(width=64, height=64, store=None, config=None):
     # [current speed, target speed]
     speed = [1.0, 1.0]
 
+    # HA effects. M3: the visitor conditions and the zap rate, printed only
+    settings = config or Settings({})
+    visitors = Visitors(visitors_from(settings))
+    zap_lo, zap_hi = zap_min_watts(settings), zap_max_watts(settings)
+    # [total power W last seen (to skip unchanged reads), zaps per second]
+    zaps = [None, 0.0]
+
     def set_sensors(values):
         level = co2_level(values)
         pond_colors.set_step(colors.saturation_step(level))
@@ -183,6 +194,14 @@ def create_scene(width=64, height=64, store=None, config=None):
         if target != speed[1]:
             speed[1] = target
             print("pond: speed -> %.1f" % target)
+        visitors.set_sensors(values)
+        w = watts(values.get("total_power"))
+        if w != zaps[0]:
+            zaps[0] = w
+            rate = zap_rate(w, zap_lo, zap_hi)
+            if rate != zaps[1]:
+                zaps[1] = rate
+                print("zaps: %.1f/s" % rate)
 
     def update(dt):
         current, target = speed
@@ -193,6 +212,7 @@ def create_scene(width=64, height=64, store=None, config=None):
                 current = target
             speed[0] = current
         motion_dt = dt * current
+        visitors.tick_timers(dt)  # real time, like the lifecycle
         # The background goes first: it erases last frame's creatures, then each
         # behavior draws its creatures on top
         update_pond(dt)

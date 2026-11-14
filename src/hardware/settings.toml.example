@@ -35,8 +35,22 @@ PERSIST_SECONDS = 60
 # lives ~3 minutes). 1-86400 (clamped; default 1).
 # POND_TIME_SCALE = 3600
 
-# Other entities this project reads
-WASHER_ENTITY = "sensor.washer_status"
+# Pond effects (all optional; an unset entity just leaves its effect out).
+# Smart plug power sensors, in W: while the washer draws more than
+# WASHER_ON_WATTS an electric eel visits the pond, and while the 3D printer
+# draws more than PRINTER_ON_WATTS a lily pad with a printer on it drifts by.
+# 1-500 (clamped; default 10).
+HA_WASHER_POWER_ENTITY = "sensor.washer_power"
+# WASHER_ON_WATTS = 10
+HA_PRINTER_POWER_ENTITY = "sensor.printer_plug_power"
+# PRINTER_ON_WATTS = 10
 
-# (later) Comma-separated energy entities for the per-device power readout
-# HA_POWER_ENTITIES = "sensor.fridge_power,sensor.washer_power"
+# A helper summing the house's power, in W. Sparks jump between the boids,
+# none at or below ZAP_MIN_WATTS (0-20000, default 300) and most often at or
+# above ZAP_MAX_WATTS (100-50000, default 5000; raised to min + 100 if not above it).
+HA_TOTAL_POWER_ENTITY = "sensor.house_power"
+# ZAP_MIN_WATTS = 300
+# ZAP_MAX_WATTS = 5000
+
+# An input_boolean helper: "off" puts the panel to sleep, anything else shows it
+HA_DISPLAY_ENTITY = "input_boolean.pond_display"

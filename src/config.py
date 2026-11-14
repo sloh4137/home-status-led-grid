@@ -5,6 +5,10 @@
     poll_seconds(settings)             # HA_POLL_SECONDS, clamped to 1..60
     persist_seconds(settings)          # PERSIST_SECONDS, clamped to 10..3600
     pond_time_scale(settings)          # POND_TIME_SCALE, clamped to 1..86400
+    washer_on_watts(settings)          # WASHER_ON_WATTS, clamped to 1..500
+    printer_on_watts(settings)         # PRINTER_ON_WATTS, clamped to 1..500
+    zap_min_watts(settings)            # ZAP_MIN_WATTS, clamped to 0..20000
+    zap_max_watts(settings)            # ZAP_MAX_WATTS, 100..50000, > the min
 
 On CircuitPython the board's CIRCUITPY/settings.toml is read through
 os.getenv() and ``path`` is ignored. On CPython the file at ``path`` is
@@ -24,6 +28,16 @@ PERSIST_MAX = 3600
 TIME_SCALE_DEFAULT = 1
 TIME_SCALE_MIN = 1
 TIME_SCALE_MAX = 86400  # a pond day per second
+ON_WATTS_DEFAULT = 10
+ON_WATTS_MIN = 1
+ON_WATTS_MAX = 500
+ZAP_MIN_DEFAULT = 300
+ZAP_MIN_LO = 0
+ZAP_MIN_HI = 20000
+ZAP_MAX_DEFAULT = 5000
+ZAP_MAX_LO = 100
+ZAP_MAX_HI = 50000
+ZAP_MIN_SPAN = 100  # ZAP_MAX_WATTS is at least this far above ZAP_MIN_WATTS
 
 
 class Settings:
@@ -81,3 +95,33 @@ def pond_time_scale(settings):
     return clamped_int(
         settings, "POND_TIME_SCALE", TIME_SCALE_DEFAULT, TIME_SCALE_MIN, TIME_SCALE_MAX
     )
+
+
+def washer_on_watts(settings):
+    """WASHER_ON_WATTS: above this the washer counts as running, 1..500 W."""
+    return clamped_int(
+        settings, "WASHER_ON_WATTS", ON_WATTS_DEFAULT, ON_WATTS_MIN, ON_WATTS_MAX
+    )
+
+
+def printer_on_watts(settings):
+    """PRINTER_ON_WATTS: above this the 3D printer counts as on, 1..500 W."""
+    return clamped_int(
+        settings, "PRINTER_ON_WATTS", ON_WATTS_DEFAULT, ON_WATTS_MIN, ON_WATTS_MAX
+    )
+
+
+def zap_min_watts(settings):
+    """ZAP_MIN_WATTS: no zaps at or below this house power, 0..20000 W."""
+    return clamped_int(
+        settings, "ZAP_MIN_WATTS", ZAP_MIN_DEFAULT, ZAP_MIN_LO, ZAP_MIN_HI
+    )
+
+
+def zap_max_watts(settings):
+    """ZAP_MAX_WATTS: zaps reach their top rate at or above this, 100..50000 W.
+    A max at or below ZAP_MIN_WATTS becomes min + 100."""
+    hi = clamped_int(
+        settings, "ZAP_MAX_WATTS", ZAP_MAX_DEFAULT, ZAP_MAX_LO, ZAP_MAX_HI
+    )
+    return max(hi, zap_min_watts(settings) + ZAP_MIN_SPAN)

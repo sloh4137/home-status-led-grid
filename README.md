@@ -25,6 +25,13 @@ cp src/hardware/settings.toml.example src/hardware/settings.toml
 | `HA_URL` | e.g. `http://192.168.1.10:8123`. Plain http. Use an IP: `homeassistant.local` often doesn't resolve on CircuitPython or WSL2 |
 | `HA_TOKEN` | Long-lived access token (see below) |
 | `HA_CO2_ENTITY`, `HA_TEMPERATURE_ENTITY`, `HA_HUMIDITY_ENTITY` | Entity IDs to show |
+| `HA_WASHER_POWER_ENTITY` | Washer smart plug power sensor, in W |
+| `WASHER_ON_WATTS` | Above this the washer counts as running, 1–500 (clamped, default 10) |
+| `HA_PRINTER_POWER_ENTITY` | 3D printer smart plug power sensor, in W |
+| `PRINTER_ON_WATTS` | Above this the printer counts as on, 1–500 (clamped, default 10) |
+| `HA_TOTAL_POWER_ENTITY` | A helper summing the house's power, in W |
+| `ZAP_MIN_WATTS` / `ZAP_MAX_WATTS` | House power range for the zaps: none at or below the min (0–20000, default 300), the top rate at or above the max (100–50000, default 5000, at least min + 100) |
+| `HA_DISPLAY_ENTITY` | An `input_boolean` helper, e.g. `input_boolean.pond_display` |
 | `HA_POLL_SECONDS` | Seconds between reads, 1–60 (clamped, default 5) |
 | `PERSIST_SECONDS` | Minimum seconds between saves of the settings and the pond, 10–3600 (clamped, default 60). Saves only happen after a change |
 | `POND_TIME_SCALE` | Debug only: speeds up the pond's clock, so fish age, breed and die in minutes. 3600 makes a pond hour pass every second. 1–86400 (clamped, default 1) |
@@ -53,6 +60,11 @@ python3 run.py --state ../other.json # saved settings (default: ../state.json)
 ```
 
 Keys stand in for the side buttons: **Up / Down** tap, **Enter / Space** hold.
+
+With fake sensors the values cycle slowly so every effect shows up, and keys
+set them by hand: **+ / -** CO2 in 100 ppm steps, **W / P** toggle the washer /
+the 3D printer, **[ / ]** the house's total power in 500 W steps, **D** the
+display helper, and **0** resumes every cycle.
 
 ### 4. Board
 

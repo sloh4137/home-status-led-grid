@@ -248,6 +248,7 @@ The water animation, the behaviors, the zaps, the eel flicker, the text panels a
 
 **M3: Extra entities + conditions.**
 - `EXTRA_ENTITIES`, the new config keys, `watts` / `above` and the hysteresis timers, plus the fake keys with W/P/[/] and the slow cycles. No visitors or zaps yet: print `visitor: eel arrive/leave` and `zaps: N.N/s` on the console.
+  - Done (desktop): `Visitor` / `Visitors` in `scenes/visitors.py` hold the condition and the off timer (`tick_timers(dt)` on the real dt, ready for M7's `background`); `zap_rate` in `scenes/effects.py`. The washer fake is **on 120 s of every 600 s**, not 60 of 180: 120 s off is shorter than the 5 min off delay, so the eel never left. Headless over 1300 s: the eel leaves 300 s after the last read above 10 W (dips included), the lily pad 60 s after, and the zap print follows the sweep (300 W → 0, 1 kW → 4.3/s, 2 kW → 6.7/s, 5 kW → 10/s). The readout still shows the three values. Board checks and plug measurements still to do.
 - *Check:*
   - **Measure both plugs** and record the numbers here: washer idle, soak dips and running draw; printer idle (on, not printing), heating and printing draw. Confirm that 10 W separates idle from running for both, and that 5 min (washer) and 60 s (printer) ride over the dips. Adjust the defaults if not.
   - On the board with the real washer and printer, the arrive/leave prints follow them, with the eel's leave coming 5 min after the washer stops.
