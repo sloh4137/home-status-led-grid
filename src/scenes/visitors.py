@@ -30,7 +30,7 @@ from creatures.species import ELECTRIC_EEL
 from creatures.spine_creature import SpineCreature
 from graphics.vector import Vector
 
-WASHER_OFF_SECONDS = 300
+WASHER_OFF_SECONDS = 60
 PRINTER_OFF_SECONDS = 60
 # A leaving visitor still on screen after this long is removed anyway
 LEAVE_TIMEOUT = 20

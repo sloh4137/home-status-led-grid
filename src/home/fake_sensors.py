@@ -50,8 +50,8 @@ _SWEEP_KEYS = ("0", "KP_0")
 
 # Plug power: (key, cycle period s, seconds on per cycle, off W range, on W range)
 _PLUGS = (
-    # The washer is off longer than WASHER_OFF_SECONDS (300), so the eel leaves
-    ("washer_power", 600, 120, (0.0, 8.0), (20.0, 500.0)),
+    # The washer is off longer than WASHER_OFF_SECONDS (60), so the eel leaves
+    ("washer_power", 180, 60, (0.0, 8.0), (20.0, 500.0)),
     ("printer_power", 240, 90, (3.0, 6.0), (80.0, 250.0)),
 )
 # Share of the washer's "on" reads that dip under 10 W, like a soak or pause
