@@ -107,7 +107,7 @@ def create_scene(width=64, height=64, store=None, config=None):
     water) and slows every moving thing (speed_for_level), easing in over a
     few seconds. The washer's and printer's plug power call in visitors
     (scenes/visitors.py) and the house's total power sets the zap rate
-    (scenes/effects.py); for now both only print on the console.
+    (scenes/effects.py); for now neither draws anything.
 
     The fish come from the store's ``pond`` section (behaviors/lifecycle.py),
     or a fresh pond without one; the store then saves the pond with the rest
@@ -180,7 +180,7 @@ def create_scene(width=64, height=64, store=None, config=None):
     # [current speed, target speed]
     speed = [1.0, 1.0]
 
-    # HA effects. M3: the visitor conditions and the zap rate, printed only
+    # HA effects. M3: the visitor conditions (printed) and the zap rate
     settings = config or Settings({})
     visitors = Visitors(visitors_from(settings))
     zap_lo, zap_hi = zap_min_watts(settings), zap_max_watts(settings)
@@ -198,10 +198,7 @@ def create_scene(width=64, height=64, store=None, config=None):
         w = watts(values.get("total_power"))
         if w != zaps[0]:
             zaps[0] = w
-            rate = zap_rate(w, zap_lo, zap_hi)
-            if rate != zaps[1]:
-                zaps[1] = rate
-                print("zaps: %.1f/s" % rate)
+            zaps[1] = zap_rate(w, zap_lo, zap_hi)
 
     def update(dt):
         current, target = speed
