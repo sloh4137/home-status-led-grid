@@ -128,6 +128,41 @@ def bench_lily_pad(bm):
     print("%-16s full %5.2f | tick %5.2f" % ("lily pad", full, tick))
 
 
+def bench_zaps(bm):
+    """One bolt's and one arc's whole life (scenes/effects.py), averaged
+    per frame shown, blanks included, on two boids 10 px apart."""
+    from scenes.effects import ARC_FRAMES, BOLT_FRAMES, Arc, Bolt
+
+    class Boid:
+        def __init__(self, x, y):
+            self.x = x
+            self.y = y
+
+    a = Boid(28.5, 30.5)
+    b = Boid(36.5, 34.5)
+
+    def bolt():
+        z = Bolt(a, b)
+        while z.draw(bm, WIDTH, HEIGHT):
+            pass
+
+    def arc():
+        z = Arc(a)
+        while z.draw(bm, WIDTH, HEIGHT):
+            pass
+
+    print(
+        "%-16s bolt %5.2f/frame (%d frames) | arc %5.2f/frame (%d frames)"
+        % (
+            "zaps",
+            _ms(bolt) / len(BOLT_FRAMES),
+            len(BOLT_FRAMES),
+            _ms(arc) / len(ARC_FRAMES),
+            len(ARC_FRAMES),
+        )
+    )
+
+
 def bench_shell_memory():
     """Bytes the turtle's shell sprites take at size 90 (board only)."""
     c = _fish(TURTLE, "slider")
@@ -153,6 +188,7 @@ def run():
     for species, variety_name in CASES:
         bench_fish(bm, species, variety_name)
     bench_lily_pad(bm)
+    bench_zaps(bm)
     bench_water()
     bench_shell_memory()
 

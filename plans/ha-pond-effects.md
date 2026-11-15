@@ -150,9 +150,10 @@ VISITORS = (
   # 0 at or below ZAP_MIN_WATTS, rising on a log scale to ZAP_MAX_RATE at ZAP_MAX_WATTS
   rate = ZAP_MAX_RATE * log(w / lo) / log(hi / lo)    # clamped to 0..ZAP_MAX_RATE
   ```
-  `ZAP_MAX_RATE = 10` zaps per second. A log scale because house power spans a few hundred watts idle to several kW with the oven on, and each doubling should look like a similar step up. No number (unavailable) → 0.
+  `ZAP_MAX_RATE = 10` zaps per second (2 after M6's simulator tuning). A log scale because house power spans a few hundred watts idle to several kW with the oven on, and each doubling should look like a similar step up. No number (unavailable) → 0.
   - If `ZAP_MIN_WATTS` is 0, `lo` is 1 W, so the log stays defined.
 - **Effects layer.** After the boids draw, the scene runs a short list of effects. Draw order becomes water → eggs → fish → boids → **zaps** → eel → lily pad. Later ambient effects (bubbles, ripples) can go in the same list without touching the behaviors.
+- **As built (M6)**: the zaps flicker by frame, not by palette. See M6 below for the frame sequence, the arcs and what changed from the sketch here.
 - **`ZapEffect(flocks)`**, once per frame with the real `dt`:
   - Accumulate `rate × dt`. For each whole zap due, at most `MAX_NEW_ZAPS = 2` per frame, pick a random flock and a random **on-screen** boid in it, then its nearest flockmate within `ZAP_REACH = 12` px (`FlockingBehavior.nearest(i, reach)`). No flockmate in reach means no zap: the accumulator is spent and nothing is drawn. Sparks only jump between boids that are actually close.
     - The `random` draw is what makes the timing irregular. At 0.5/s a spark comes every couple of seconds, not on a metronome.
@@ -274,10 +275,19 @@ The water animation, the behaviors, the zaps, the eel flicker, the text panels a
 
 **M6: Zaps between boids.**
 - `ZapEffect`, `FlockingBehavior.nearest`, the `ZAP` slot, the effects list in the scene and the zap config keys.
+  - Done (desktop): two kinds of discharge, both a few `draw_line` segments that follow their boids. Changed from the sketch above:
+    - **Bolts** jump from a random on-screen boid to its nearest flockmate within 12 px. Each one plays `BOLT_FRAMES`, one entry per rendered frame: (1) a jagged bolt with 2 sharp bends on alternating sides, drawn thick (each segment twice, 1 px across) in `ZAP`, (2) a different bolt in `WHITE`, bending the other way first, (3) blank, (4) bolt 1 thin with one of its 3 segments missing, (5) blank, (6) one segment, (7) half of that segment, then gone. Each segment gets a random rank when the bolt is made, so the same parts go missing as it fades. The bends are stored as (fraction along, offset across) the line between the boids, so the shape stretches and turns with them. Short bolts jag less, so they don't look loopy.
+    - **Arcs** (`ARC_CHANCE = 0.25` of the zaps) stay on one boid: a loop of 4 segments out of the boid, about 3–5 px out and back, in `ZAP`. Frame 1 is full, frame 2 has half the segments, then it's gone.
+    - **Colors**: `ZAP` is a fixed electric yellow (`0xFFFA05`, `EFFECT_RGB`; first a blue, `0x3C8CFF`, changed in the simulator) that `PondColors` rewrites with the creature slots, and the white bolt uses the existing `WHITE` slot. Several zaps are live at different frames at once, so one slot can't carry a per-frame color. Each zap's frame sequence makes the flicker, and a frame writes no palette entries at all. Both go gray with the CO2.
+    - **Timing**: each zap spends a random 0.5–1.5 of the due count, so the gaps are irregular at the same average rate. A zap tries up to 3 boids for one on screen, because the flocks roam 30 px past the edges and a single pick missed about half the time. Segments with an end off the canvas are skipped, because the board's `draw_line` rejects out-of-range points.
+    - Headless, 60 s at 10 fps: 300 W draws nothing; 1 kW draws 130 bolts and 49 arcs (4.3/s due); 2 kW 239 + 77 (6.7/s); 5 kW 337 + 98 (10/s), up to 7 live at once. About a quarter of the due zaps find no flockmate in reach and draw nothing, as planned. These counts are at the first `ZAP_MAX_RATE` of 10. **Tuned in the simulator to `ZAP_MAX_RATE = 2`**, which scales them down 5×: about 1.4 drawn per second at 5 kW.
+    - Cost: a bolt is 6 + 3 + 0 + 2 + 0 + 1 + 1 = 13 lines over its 7 frames, about 2.6 ms on the board at ~0.2 ms a line. An arc is 4 + 2 = 6. At the top rate of 2/s about 1.4 zaps a second get drawn, so at ~10 fps that's roughly 0.4 ms a frame on average and up to ~2 ms in a busy frame. `bench_render.py` has a `zaps` row (ms per frame shown, blanks included) to check on the board. If it's too slow, drop the thick copy or lower `ZAP_MAX_RATE`.
+    - **On the board** at a zap rate of 0, `DEBUG` matches M5: 9.7–10.2 fps (M5 9.7–10.4), physics 40.8–42.6 ms (41.4–44.8), render 36.2–41.9 ms (36.0–40.2), refresh 13.7–15.1 ms (14.2–14.8), net 2.7–4.2 ms with a 48.6 ms worst frame. So a quiet house costs nothing.
+    - Still to check on the board: the look, `bench_render.py`, `DEBUG` at the top rate, and the house's real idle and busy totals for `ZAP_MIN_WATTS` / `ZAP_MAX_WATTS`.
 - *Check:*
   - With the simulator's [ / ], nothing at 300 W, an occasional spark around 1 kW, and a busy crackle at 5 kW and above.
   - Sparks jump between visibly close boids and follow them for their 1–2 frames.
-  - On the board, record `DEBUG` frame time at 0, 3 and 10 zaps/s (OPTIMIZATIONS.md). At 0 it must equal M5.
+  - On the board, record `DEBUG` frame time at 0 zaps/s and at the top rate (OPTIMIZATIONS.md). At 0 it must equal M5.
   - Set `ZAP_MIN_WATTS` / `ZAP_MAX_WATTS` from the house's real idle and busy totals, and record them here.
 
 **M7: Display sleep.**

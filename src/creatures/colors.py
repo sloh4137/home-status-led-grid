@@ -6,9 +6,11 @@ indices 0-5, so every creature color, across all species, lives in the slots
 after it. Species refer to these slot numbers, never to RGB values, so a
 saturation change is one palette write per slot with no per-creature cost.
 
-The last RESERVED slots aren't in BASE_RGB: ELECTRIC (the electric eel's
-flicker) and ZAP (the zaps between boids) are written every frame by their
-effect while it's live, through desaturate() so they go gray with the rest
+The last RESERVED slots are for effects, not species. ELECTRIC (the
+electric eel's flicker) is written every few frames while the eel is here,
+through desaturate() so it goes gray with the rest. ZAP (the bolts and arcs
+between boids) is a fixed color in EFFECT_RGB that PondColors rewrites with
+the creature slots; the zaps flicker by frame, not by palette
 (plans/ha-pond-effects.md).
 """
 
@@ -28,9 +30,9 @@ GOLD = 10
 SLATE = 11
 BRONZE = 12
 OLIVE = 13
-# Reserved, written per frame by their effects
-ELECTRIC = 14
-ZAP = 15
+# Reserved for effects
+ELECTRIC = 14  # written every few frames by the eel's flicker
+ZAP = 15  # fixed (EFFECT_RGB)
 
 # (slot, base 0xRRGGBB) at full brightness
 BASE_RGB = (
@@ -46,6 +48,10 @@ BASE_RGB = (
     (BRONZE, 0x8A5422),
     (OLIVE, 0x5E7A2A),
 )
+
+# Effect slots with a fixed color, saturation-shifted like BASE_RGB. The
+# zaps' main color: an electric yellow
+EFFECT_RGB = ((ZAP, 0xFFFA05),)
 
 # CO2 -> level: 0 (clean) at or below CO2_FULL ppm, rising linearly to
 # MAX_LEVEL at or above CO2_DIM ppm, in whole steps. Every CO2 effect maps
@@ -72,7 +78,9 @@ WATER_SLOTS = range(FIRST_SLOT)
 def _check():
     for slot, _ in BASE_RGB:
         if not FIRST_SLOT <= slot <= LAST_SLOT:
-            raise ValueError("creature color slot %d outside %d-%d" % (slot, FIRST_SLOT, LAST_SLOT))
+            raise ValueError(
+                "creature color slot %d outside %d-%d" % (slot, FIRST_SLOT, LAST_SLOT)
+            )
 
 
 _check()
@@ -126,17 +134,19 @@ class PondColors:
     Owns the pond palette's colors: installs the creature slots, remembers
     the water's (already dimmed) colors, and applies the CO2 saturation step
     from sensor values, writing the palette only when the step changes.
-    Other per-frame color writers (the eel's flicker, the zaps) pass their
+    The eel's flicker, which writes its slot every few frames, passes its
     colors through ``desaturate(rgb, colors.step)`` to match.
     """
 
     def __init__(self, palette, desaturate_water=DESATURATE_WATER):
         if len(palette) < PALETTE_SIZE:
-            raise ValueError("palette has %d entries, need %d" % (len(palette), PALETTE_SIZE))
+            raise ValueError(
+                "palette has %d entries, need %d" % (len(palette), PALETTE_SIZE)
+            )
         self.palette = palette
         self.step = FULL_STEP
         # (slot, base rgb) for every slot the saturation shift rewrites
-        base = list(BASE_RGB)
+        base = list(BASE_RGB) + list(EFFECT_RGB)
         if desaturate_water:
             base = [(i, palette[i]) for i in WATER_SLOTS] + base
         self.base = tuple(base)

@@ -106,6 +106,27 @@ class FlockingBehavior(SwimBehavior):
         # boid was last steered (two frames ago).
         self.prev_dt = 0.0
 
+    def nearest(self, i: int, reach: float) -> int:
+        """
+        Index of boid i's nearest flockmate within reach px, or -1. A direct
+        scan, called only when a zap is due (scenes/effects.py), not per
+        frame; the pond's flocks are small (under grid_min_boids).
+        """
+        xs = self.xs
+        ys = self.ys
+        x = xs[i]
+        y = ys[i]
+        best = -1
+        best_sq = reach * reach
+        for j in range(len(xs)):
+            dx = xs[j] - x
+            dy = ys[j] - y
+            d_sq = dx * dx + dy * dy
+            if d_sq <= best_sq and j != i:
+                best = j
+                best_sq = d_sq
+        return best
+
     def cell_index(self, x: float, y: float) -> int:
         """
         Get the int index for the cell. Unused as a method and in-lining this computation instead

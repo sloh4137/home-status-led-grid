@@ -13,7 +13,7 @@ from behaviors.flocking import FlockingBehavior
 from behaviors.lifecycle import Pond
 from _imageload import load_image
 from graphics.graphics_helpers import dim_palette, make_canvas
-from scenes.effects import zap_rate
+from scenes.effects import ZapEffect, zap_rate
 from scenes.visitors import Visitors, visitors_from, watts
 
 import bitmaptools
@@ -107,8 +107,8 @@ def create_scene(width=64, height=64, store=None, config=None):
     water) and slows every moving thing (speed_for_level), easing in over a
     few seconds. The washer's and printer's plug power call in visitors
     (scenes/visitors.py: the washer brings the electric eel, the printer a
-    lily pad with a 3D printer on it) and the house's
-    total power sets the zap rate (scenes/effects.py, not drawn yet).
+    lily pad with a 3D printer on it) and the house's total power sets how
+    often electricity zaps between the boids (scenes/effects.py).
 
     The fish come from the store's ``pond`` section (behaviors/lifecycle.py),
     or a fresh pond without one; the store then saves the pond with the rest
@@ -181,13 +181,14 @@ def create_scene(width=64, height=64, store=None, config=None):
     # [current speed, target speed]
     speed = [1.0, 1.0]
 
-    # HA effects: the visitors (the eel and the lily pad) and the zap rate
-    # (not drawn yet)
+    # HA effects: the visitors (the eel and the lily pad) and the zaps over
+    # the boids
     settings = config or Settings({})
     visitors = Visitors(visitors_from(settings, pond_colors), canvas, width, height)
     zap_lo, zap_hi = zap_min_watts(settings), zap_max_watts(settings)
-    # [total power W last seen (to skip unchanged reads), zaps per second]
-    zaps = [None, 0.0]
+    zaps = ZapEffect(canvas, boid_flocks, width, height)
+    # Total power W last seen, to skip unchanged reads
+    last_power = [None]
 
     def set_sensors(values):
         level = co2_level(values)
@@ -198,9 +199,9 @@ def create_scene(width=64, height=64, store=None, config=None):
             print("pond: speed -> %.1f" % target)
         visitors.set_sensors(values)
         w = watts(values.get("total_power"))
-        if w != zaps[0]:
-            zaps[0] = w
-            zaps[1] = zap_rate(w, zap_lo, zap_hi)
+        if w != last_power[0]:
+            last_power[0] = w
+            zaps.set_rate(zap_rate(w, zap_lo, zap_hi))
 
     def update(dt):
         current, target = speed
@@ -219,6 +220,8 @@ def create_scene(width=64, height=64, store=None, config=None):
         pond.update(dt, motion_dt)
         for flock in boid_flocks:
             flock.update(motion_dt)
+        # Real time: power use doesn't slow with the CO2
+        zaps.update(dt)
         # Over everything, the lily pad on top: timers ran above on dt, the
         # swimming on motion_dt
         visitors.update(motion_dt)
