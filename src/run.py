@@ -10,8 +10,12 @@ to the board as CIRCUITPY/settings.toml; --settings points at a different file.
 With HA_URL set it reads live values through home.ha_client.HAClient, otherwise
 it shows FakeSensors values; --fake-sensors shows them even with HA_URL set.
 
-With fake sensors, + / - set CO2 by hand in 100 ppm steps (the creatures dim
-above 800 ppm) and 0 goes back to the slow 400-2200 ppm sweep.
+With fake sensors, + / - set CO2 by hand in 100 ppm steps (the pond loses
+its color and slows down above 800 ppm), W / P toggle the washer / the 3D
+printer, [ / ] set the house's total power in 500 W steps, D toggles the
+display helper (off puts the pond to sleep: the window goes black, the fish
+stop, and the lifecycle keeps going; any button key wakes it for 5 minutes),
+and 0 goes back to the slow cycles and sweeps.
 
 Keys stand in for the board's side buttons: Up / Down tap, Enter / Space hold
 (select). The first press opens the menu.
@@ -52,6 +56,7 @@ DEFAULT_SETTINGS = os.path.join(SRC, "hardware", "settings.toml")
 DEFAULT_STATE = os.path.join(os.path.dirname(SRC), "state.json")
 
 SCENES = ("example_fish_scene", "pond")
+SLEEP_HZ = 10  # ticks per second while the display sleeps, like the board
 
 
 def main(argv=None):
@@ -118,6 +123,7 @@ def main(argv=None):
         set_rotation,
         store,
         settings,
+        display.set_power,
     )
     display.show(app.group)
     sensor_key = getattr(sensors, "key", None)
@@ -128,7 +134,7 @@ def main(argv=None):
             sensor_key(keysym)
 
     display.on_key(on_key)
-    display.run(app.tick, fps=30)
+    display.run(app.tick, fps=30, awake=lambda: app.awake, sleep_hz=SLEEP_HZ)
     # The window was closed; a desktop "power loss" shouldn't lose changes
     store.flush(time.monotonic())
 

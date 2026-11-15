@@ -1,13 +1,17 @@
 """
-Shared creature colors and the CO2 brightness shift.
+Shared creature colors and the CO2 saturation shift.
 
 The pond canvas shares the water sprite's 16-entry palette. The water uses
 indices 0-5, so every creature color, across all species, lives in the slots
 after it. Species refer to these slot numbers, never to RGB values, so a
-brightness change is one palette write per slot with no per-creature cost.
+saturation change is one palette write per slot with no per-creature cost.
 
-The last RESERVED slots are kept free for the future special fish and the
-boid zaps (see plans/persistence-and-fish-variation.md "Future ideas").
+The last RESERVED slots are for effects, not species. ELECTRIC (the
+electric eel's flicker) is written every few frames while the eel is here,
+through desaturate() so it goes gray with the rest. ZAP (the bolts and arcs
+between boids) is a fixed color in EFFECT_RGB that PondColors rewrites with
+the creature slots; the zaps flicker by frame, not by palette
+(plans/ha-pond-effects.md).
 """
 
 FIRST_SLOT = 6  # after the pond water's 0-5
@@ -26,6 +30,9 @@ GOLD = 10
 SLATE = 11
 BRONZE = 12
 OLIVE = 13
+# Reserved for effects
+ELECTRIC = 14  # written every few frames by the eel's flicker
+ZAP = 15  # fixed (EFFECT_RGB)
 
 # (slot, base 0xRRGGBB) at full brightness
 BASE_RGB = (
@@ -42,73 +49,119 @@ BASE_RGB = (
     (OLIVE, 0x5E7A2A),
 )
 
-# CO2 -> brightness: full at or below CO2_FULL ppm, falling linearly to
-# MIN_STEP tenths at or above CO2_DIM ppm, in whole tenths so the palette
-# only changes when the step does.
+# Effect slots with a fixed color, saturation-shifted like BASE_RGB. The
+# zaps' main color: an electric yellow
+EFFECT_RGB = ((ZAP, 0xFFFA05),)
+
+# CO2 -> level: 0 (clean) at or below CO2_FULL ppm, rising linearly to
+# MAX_LEVEL at or above CO2_DIM ppm, in whole steps. Every CO2 effect maps
+# the level to its own range (saturation here, speed in the pond scene), so
+# the thresholds live in one place.
 CO2_FULL = 800
 CO2_DIM = 2000
-MIN_STEP = 4
+MAX_LEVEL = 10
+
+# Level -> saturation step, in tenths: FULL_STEP in clean air, down to
+# MIN_SATURATION_STEP at MAX_LEVEL. Not 0: a fully gray pond loses the
+# difference between kohaku red and white, and between species.
 FULL_STEP = 10
+MIN_SATURATION_STEP = 2
+
+# Gray the water with the creatures. A gray pond says "stale air" more
+# clearly than gray fish in blue water. The water is very dim
+# (POND_BRIGHTNESS), so if the shift bands or doesn't show on the panel,
+# turn this off.
+DESATURATE_WATER = True
+WATER_SLOTS = range(FIRST_SLOT)
 
 
 def _check():
     for slot, _ in BASE_RGB:
         if not FIRST_SLOT <= slot <= LAST_SLOT:
-            raise ValueError("creature color slot %d outside %d-%d" % (slot, FIRST_SLOT, LAST_SLOT))
+            raise ValueError(
+                "creature color slot %d outside %d-%d" % (slot, FIRST_SLOT, LAST_SLOT)
+            )
 
 
 _check()
 
 
-def set_brightness(palette, step):
+def desaturate(rgb, step):
     """
-    Rewrite every creature slot from its base RGB at step tenths (0-10) of
-    full brightness. About one palette write per slot.
+    rgb (0xRRGGBB) at step tenths (0-10) of full saturation: each channel
+    moves toward the color's own luma, so it goes gray without changing much
+    in brightness. Integer only; step FULL_STEP returns rgb unchanged.
     """
-    for slot, rgb in BASE_RGB:
-        r = ((rgb >> 16) & 0xFF) * step // FULL_STEP
-        g = ((rgb >> 8) & 0xFF) * step // FULL_STEP
-        b = (rgb & 0xFF) * step // FULL_STEP
-        palette[slot] = (r << 16) | (g << 8) | b
+    r = (rgb >> 16) & 0xFF
+    g = (rgb >> 8) & 0xFF
+    b = rgb & 0xFF
+    luma = (r * 77 + g * 150 + b * 29) >> 8
+    # Floor division never overshoots: |(c - luma) * step // 10| <= |c - luma|
+    r = luma + (r - luma) * step // FULL_STEP
+    g = luma + (g - luma) * step // FULL_STEP
+    b = luma + (b - luma) * step // FULL_STEP
+    return (r << 16) | (g << 8) | b
 
 
-def co2_step(values):
+def co2_level(values):
     """
-    The brightness step (MIN_STEP..FULL_STEP tenths) for the sensor values
-    dict ({key: (state, unit, t)}). Missing or unavailable CO2 -> full.
+    The CO2 level (0..MAX_LEVEL) for the sensor values dict
+    ({key: (state, unit, t)}). Missing or unavailable CO2 -> 0 (clean).
     """
     entry = values.get("co2")
     if entry is None:
-        return FULL_STEP
+        return 0
     try:
         ppm = float(entry[0])
     except (TypeError, ValueError):  # "unavailable", "unknown", None
-        return FULL_STEP
+        return 0
     if ppm <= CO2_FULL:
-        return FULL_STEP
+        return 0
     if ppm >= CO2_DIM:
-        return MIN_STEP
-    span = FULL_STEP - MIN_STEP
+        return MAX_LEVEL
     # Round half up; round() rounds half to even, which makes the steps uneven
-    return FULL_STEP - int(span * (ppm - CO2_FULL) / (CO2_DIM - CO2_FULL) + 0.5)
+    return int(MAX_LEVEL * (ppm - CO2_FULL) / (CO2_DIM - CO2_FULL) + 0.5)
 
 
-class CreatureColors:
+def saturation_step(level):
+    """FULL_STEP at level 0, down to MIN_SATURATION_STEP at MAX_LEVEL."""
+    span = FULL_STEP - MIN_SATURATION_STEP
+    return FULL_STEP - (level * span + MAX_LEVEL // 2) // MAX_LEVEL
+
+
+class PondColors:
     """
-    Owns the creature slots of one palette: installs them at full brightness
-    and applies the CO2 step from sensor values, writing the palette only
-    when the step changes.
+    Owns the pond palette's colors: installs the creature slots, remembers
+    the water's (already dimmed) colors, and applies the CO2 saturation step
+    from sensor values, writing the palette only when the step changes.
+    The eel's flicker, which writes its slot every few frames, passes its
+    colors through ``desaturate(rgb, colors.step)`` to match.
     """
 
-    def __init__(self, palette):
+    def __init__(self, palette, desaturate_water=DESATURATE_WATER):
         if len(palette) < PALETTE_SIZE:
-            raise ValueError("palette has %d entries, need %d" % (len(palette), PALETTE_SIZE))
+            raise ValueError(
+                "palette has %d entries, need %d" % (len(palette), PALETTE_SIZE)
+            )
         self.palette = palette
         self.step = FULL_STEP
-        set_brightness(palette, FULL_STEP)
+        # (slot, base rgb) for every slot the saturation shift rewrites
+        base = list(BASE_RGB) + list(EFFECT_RGB)
+        if desaturate_water:
+            base = [(i, palette[i]) for i in WATER_SLOTS] + base
+        self.base = tuple(base)
+        self._write()
 
-    def set_sensors(self, values):
-        step = co2_step(values)
+    def _write(self):
+        palette = self.palette
+        step = self.step
+        for slot, rgb in self.base:
+            palette[slot] = desaturate(rgb, step)
+
+    def set_step(self, step):
         if step != self.step:
             self.step = step
-            set_brightness(self.palette, step)
+            self._write()
+
+    def set_sensors(self, values):
+        self.set_step(saturation_step(co2_level(values)))

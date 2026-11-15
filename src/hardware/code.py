@@ -41,6 +41,10 @@
 #   PERSIST_SECONDS   10-3600, default 60: minimum seconds between state saves
 # The readout shows WIFI... while connecting, then the values, or NO WIFI /
 # NO HA CFG if setup failed, or HA OFFLINE after 3 intervals without a read.
+#   HA_DISPLAY_ENTITY an input_boolean: "off" puts the panel to sleep (dark,
+#                     fish frozen; lifecycle, saves and the HA poll keep
+#                     running) and a button press wakes it for 5 minutes.
+#                     Unavailable, unset, no WiFi or HA OFFLINE keep it awake.
 #
 # Buttons: UP / DOWN open the menu, a tap moves the highlight and holding
 # either for ~0.6 s selects. Items: ROTATE 90, SENSORS ON/OFF, DUMP STATE,
@@ -82,6 +86,8 @@ from ui.buttons import KeypadButtons  # noqa: E402
 
 WIDTH, HEIGHT = 64, 64
 FPS = 30
+SLEEP_HZ = 10  # ticks per second while the display sleeps
+SLEEP_STATS_S = 30  # seconds between sleep printouts with DEBUG
 DEBUG = True  # time physics, render, net and refresh; print them to the serial console
 STATS_EVERY = 30  # frames between timing printouts on the serial console
 IMPORT_PATH = "/state.json"  # CIRCUITPY/state.json, imported once at startup
@@ -122,6 +128,12 @@ def set_rotation(degrees):
     display.rotation = degrees
 
 
+def set_display(on):
+    # brightness 0 pauses rgbmatrix's scan: the panel goes dark and its
+    # interrupt stops, which a black frame alone wouldn't do
+    matrix.brightness = 1.0 if on else 0.0
+
+
 # ---------------------------------------------------------------- app
 settings = load_settings()
 print("nvm: %d bytes" % len(microcontroller.nvm))
@@ -141,6 +153,7 @@ app = App(
     set_rotation,
     store,
     settings,
+    set_display,
 )
 display.root_group = app.group
 display.refresh()  # show WIFI... while connecting, which can take seconds
@@ -273,18 +286,66 @@ def timed_frame(dt, now):
         stats_start = time.monotonic_ns()
 
 
+sleep_ticks = 0
+sleep_tick_total = 0
+sleep_stats_start = time.monotonic()
+
+
+def sleep_tick(dt, now):
+    """Asleep: app.tick runs the lifecycle, saves and the HA poll only, and
+    there's no refresh. With DEBUG, a sleep line every SLEEP_STATS_S."""
+    global sleep_ticks, sleep_tick_total, sleep_stats_start
+    if not DEBUG:
+        app.tick(dt, now)
+        return
+    t0 = time.monotonic_ns()
+    app.tick(dt, now)
+    sleep_tick_total += time.monotonic_ns() - t0
+    sleep_ticks += 1
+    if now - sleep_stats_start >= SLEEP_STATS_S:
+        print(
+            "sleep | %.1f ticks/s | tick %.1f ms | ha ok %s"
+            % (
+                sleep_ticks / (now - sleep_stats_start),
+                sleep_tick_total / sleep_ticks / 1e6,
+                "never" if sensors.last_ok is None
+                else "%.0fs ago" % (time.monotonic() - sensors.last_ok),
+            )
+        )
+        sleep_ticks = 0
+        sleep_tick_total = 0
+        sleep_stats_start = now
+
+
 # ---------------------------------------------------------------- main loop
+# app.awake can change inside a tick: the tick that falls asleep skips its
+# refresh, and the one that wakes refreshes (the panel shows the frame from
+# before the sleep until then, at brightness 1).
 frame_time = 1 / FPS
+sleep_time = 1 / SLEEP_HZ
 last = time.monotonic()
 while True:
     now = time.monotonic()
     dt = now - last
     last = now
 
-    if DEBUG:
-        timed_frame(dt, now)
+    if app.awake:
+        if DEBUG:
+            timed_frame(dt, now)
+        else:
+            app.tick(dt, now)
+            if app.awake:
+                display.refresh()
+        if not app.awake:  # fell asleep this tick
+            sleep_stats_start = time.monotonic()
+            sleep_ticks = sleep_tick_total = 0
     else:
-        app.tick(dt, now)
-        display.refresh()
+        sleep_tick(dt, now)
+        if app.awake:  # woke this tick: draw at once, and start fresh stats
+            display.refresh()
+            stats_start = time.monotonic_ns()
+            frames = update_total = render_total = refresh_total = 0
+            net_total = net_max = 0
 
-    time.sleep(max(0.0, frame_time - (time.monotonic() - now)))
+    tick_time = frame_time if app.awake else sleep_time
+    time.sleep(max(0.0, tick_time - (time.monotonic() - now)))

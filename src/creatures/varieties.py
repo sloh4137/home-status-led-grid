@@ -10,10 +10,20 @@ to be unique within a species.
 
 import random
 
-from creatures.colors import BLACK, BRONZE, GOLD, OLIVE, RED, SLATE, WHITE
+from creatures.colors import (
+    BLACK,
+    BRONZE,
+    ELECTRIC,
+    GOLD,
+    OLIVE,
+    RED,
+    SLATE,
+    WHITE,
+)
 from creatures.pattern import (
     DORSAL,
     EDGES,
+    EEL_SPOTS,
     HEAD,
     MOTTLE,
     PATCHES,
@@ -120,6 +130,10 @@ TURTLE_VARIETIES = (
     # Pale yellow shell, white skin: rare
     Variety("albino", WHITE, WHITE, weight=1, shell=ShellLook(GOLD, BRONZE)),
 )
+
+# Electric eel (a visitor, scenes/visitors.py): a dark slate body with the
+# flickering ELECTRIC spots. Never bred, so one variety.
+EEL_VARIETIES = (Variety("electric", SLATE, SLATE, ((ELECTRIC, EEL_SPOTS),)),)
 
 # inherit_variety tiers, in percent
 SAME = 80

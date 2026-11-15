@@ -23,7 +23,7 @@ import gc
 import time
 
 from _dio import dio
-from creatures.species import CATFISH, KOI, STURGEON, TURTLE
+from creatures.species import CATFISH, ELECTRIC_EEL, KOI, STURGEON, TURTLE
 from creatures.spine_creature import SpineCreature
 from creatures.varieties import find_variety
 from graphics.vector import Vector
@@ -32,7 +32,8 @@ WIDTH = HEIGHT = 64
 FRAMES = 50
 
 # (species, variety): a plain and a spotted koi, both catfish looks with
-# spots, and the sturgeon
+# spots, the sturgeon, both turtles and the electric eel (the lily pad has its
+# own line)
 CASES = (
     (KOI, "kohaku"),
     (KOI, "shusui"),
@@ -41,6 +42,7 @@ CASES = (
     (STURGEON, "plain"),
     (TURTLE, "slider"),
     (TURTLE, "box"),
+    (ELECTRIC_EEL, "electric"),
 )
 
 
@@ -116,6 +118,51 @@ def bench_water():
     print("%-16s %5.2f" % ("pond water", _ms(lambda: draw(canvas))))
 
 
+def bench_lily_pad(bm):
+    """The lily pad's one sprite blit, and its frame swap."""
+    from creatures.lily_pad import LilyPad
+
+    pad = LilyPad(Vector(32, 32))
+    full = _ms(lambda: pad.render(bm))
+    tick = _ms(lambda: pad.tick(0.07))
+    print("%-16s full %5.2f | tick %5.2f" % ("lily pad", full, tick))
+
+
+def bench_zaps(bm):
+    """One bolt's and one arc's whole life (scenes/effects.py), averaged
+    per frame shown, blanks included, on two boids 10 px apart."""
+    from scenes.effects import ARC_FRAMES, BOLT_FRAMES, Arc, Bolt
+
+    class Boid:
+        def __init__(self, x, y):
+            self.x = x
+            self.y = y
+
+    a = Boid(28.5, 30.5)
+    b = Boid(36.5, 34.5)
+
+    def bolt():
+        z = Bolt(a, b)
+        while z.draw(bm, WIDTH, HEIGHT):
+            pass
+
+    def arc():
+        z = Arc(a)
+        while z.draw(bm, WIDTH, HEIGHT):
+            pass
+
+    print(
+        "%-16s bolt %5.2f/frame (%d frames) | arc %5.2f/frame (%d frames)"
+        % (
+            "zaps",
+            _ms(bolt) / len(BOLT_FRAMES),
+            len(BOLT_FRAMES),
+            _ms(arc) / len(ARC_FRAMES),
+            len(ARC_FRAMES),
+        )
+    )
+
+
 def bench_shell_memory():
     """Bytes the turtle's shell sprites take at size 90 (board only)."""
     c = _fish(TURTLE, "slider")
@@ -140,6 +187,8 @@ def run():
     print("ms per call, %d calls each" % FRAMES)
     for species, variety_name in CASES:
         bench_fish(bm, species, variety_name)
+    bench_lily_pad(bm)
+    bench_zaps(bm)
     bench_water()
     bench_shell_memory()
 

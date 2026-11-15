@@ -3,9 +3,9 @@ Scene with procedural generated fish
 """
 
 from _dio import dio
-from config import pond_time_scale
+from config import Settings, pond_time_scale, zap_max_watts, zap_min_watts
 from creatures import colors
-from creatures.colors import CreatureColors
+from creatures.colors import MAX_LEVEL, PondColors, co2_level
 from creatures.fish_boid import FishBoid
 from creatures.species import KOI, KOI_WANDER as KOI_WANDER_MOTION
 from graphics.vector import Vector
@@ -13,6 +13,8 @@ from behaviors.flocking import FlockingBehavior
 from behaviors.lifecycle import Pond
 from _imageload import load_image
 from graphics.graphics_helpers import dim_palette, make_canvas
+from scenes.effects import ZapEffect, zap_rate
+from scenes.visitors import Visitors, visitors_from, watts
 
 import bitmaptools
 import random
@@ -34,6 +36,20 @@ BOIDS_PER_FLOCK = 10
 
 # Try the koi on WanderBehavior instead of flocking
 KOI_WANDER = False
+
+# CO2 -> speed: every moving thing runs on dt * speed, from 1.0 in clean air
+# down to MIN_SPEED at MAX_LEVEL, in tenths. The lifecycle clock and the water
+# animation stay on the real dt.
+MIN_SPEED = 0.4
+# How fast speed eases toward its target, per second, so a 0.1 step in the
+# target takes a few seconds instead of showing as a sudden slowdown
+SPEED_EASE = 0.5
+
+
+def speed_for_level(level):
+    """1.0 at level 0, down to MIN_SPEED at MAX_LEVEL, in whole tenths."""
+    span = 10 - int(MIN_SPEED * 10 + 0.5)
+    return (10 - (level * span + MAX_LEVEL // 2) // MAX_LEVEL) / 10
 
 
 def draw_frame(canvas, sprite, x, y):
@@ -85,21 +101,27 @@ def load_pond_water(width, height):
 
 def create_scene(width=64, height=64, store=None, config=None):
     """
-    Build the scene. Returns (group, update(dt), set_sensors(values)) for the
-    main loop. set_sensors gets the whole sensor values dict whenever it
-    changes; the CO2 level dims the creatures (not the water).
+    Build the scene. Returns (group, update(dt), set_sensors(values),
+    background(dt)) for the main loop; background runs instead of update
+    while the display sleeps (app.py). set_sensors gets the whole sensor values dict whenever it
+    changes; the CO2 level drains the color out of the pond (creatures and
+    water) and slows every moving thing (speed_for_level), easing in over a
+    few seconds. The washer's and printer's plug power call in visitors
+    (scenes/visitors.py: the washer brings the electric eel, the printer a
+    lily pad with a 3D printer on it) and the house's total power sets how
+    often electricity zaps between the boids (scenes/effects.py).
 
     The fish come from the store's ``pond`` section (behaviors/lifecycle.py),
     or a fresh pond without one; the store then saves the pond with the rest
     of the document. A fresh or repaired pond marks the store dirty, so the
     fixed version is what gets saved, and so does every change the lifecycle
     makes (aging, births, deaths). config (settings.toml) gives
-    POND_TIME_SCALE.
+    POND_TIME_SCALE, the plugs' on watts and the zap power range.
     """
 
     group = dio.Group()
     palette, update_pond, draw_pond = load_pond_water(width, height)
-    creature_colors = CreatureColors(palette)
+    pond_colors = PondColors(palette)
     canvas = make_canvas(group, width, height, palette)
 
     # The fish, one behavior per species present, so species never flock
@@ -157,13 +179,58 @@ def create_scene(width=64, height=64, store=None, config=None):
         )
         boid_flocks.append(flock)
 
+    # [current speed, target speed]
+    speed = [1.0, 1.0]
+
+    # HA effects: the visitors (the eel and the lily pad) and the zaps over
+    # the boids
+    settings = config or Settings({})
+    visitors = Visitors(visitors_from(settings, pond_colors), canvas, width, height)
+    zap_lo, zap_hi = zap_min_watts(settings), zap_max_watts(settings)
+    zaps = ZapEffect(canvas, boid_flocks, width, height)
+    # Total power W last seen, to skip unchanged reads
+    last_power = [None]
+
+    def set_sensors(values):
+        level = co2_level(values)
+        pond_colors.set_step(colors.saturation_step(level))
+        target = speed_for_level(level)
+        if target != speed[1]:
+            speed[1] = target
+            print("pond: speed -> %.1f" % target)
+        visitors.set_sensors(values)
+        w = watts(values.get("total_power"))
+        if w != last_power[0]:
+            last_power[0] = w
+            zaps.set_rate(zap_rate(w, zap_lo, zap_hi))
+
     def update(dt):
+        current, target = speed
+        if current != target:
+            current += (target - current) * min(1.0, dt * SPEED_EASE)
+            # Snap the last sliver so the ease ends
+            if abs(target - current) < 0.005:
+                current = target
+            speed[0] = current
+        motion_dt = dt * current
+        visitors.tick_timers(dt)  # real time, like the lifecycle
         # The background goes first: it erases last frame's creatures, then each
         # behavior draws its creatures on top
         update_pond(dt)
         draw_pond(canvas)
-        pond.update(dt)
+        pond.update(dt, motion_dt)
         for flock in boid_flocks:
-            flock.update(dt)
+            flock.update(motion_dt)
+        # Real time: power use doesn't slow with the CO2
+        zaps.update(dt)
+        # Over everything, the lily pad on top: timers ran above on dt, the
+        # swimming on motion_dt
+        visitors.update(motion_dt)
 
-    return group, update, creature_colors.set_sensors
+    def background(dt):
+        """While the display sleeps: the lifecycle and the visitors' off
+        delays keep their real-time clocks; nothing moves or draws."""
+        pond.tick_clock(dt)
+        visitors.tick_timers(dt)
+
+    return group, update, set_sensors, background

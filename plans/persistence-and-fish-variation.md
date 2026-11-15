@@ -341,6 +341,8 @@ The rule from OPTIMIZATIONS.md still applies: method calls and allocations are w
 Real kumonryu change their black-and-white pattern through their life. Add a `shifting=True` flag on a variety: on each growth step, the creature reseeds its spots from `hash(seed, size_step)` instead of `seed`. That's no new data in the genome and no per-frame cost, since spots are already rebuilt on size steps. White base, black `PATCHES`, family `blue` or its own.
 
 ### Special fish driven by HA conditions
+> **Done in [ha-pond-effects.md](ha-pond-effects.md).** Built as the electric eel and the lily pad, as visitors from HA rather than species; that plan's design replaces the sketch below, which is kept for history.
+
 Example: a lightning fish that appears only while the washing machine is running. Special fish don't reproduce or age. They use the same movement as normal fish, only much faster.
 
 - **Species flags.** Add `lifecycle=True` and `persist=True` to `Species` now, with those defaults.
@@ -357,6 +359,8 @@ Example: a lightning fish that appears only while the washing machine is running
 - **Sensors:** `from_settings` only polls `READOUT_ENTITIES` (CO2, temperature, humidity). `WASHER_ENTITY` is in `settings.toml` but isn't polled. Add an `EXTRA_ENTITIES` list, e.g. `("washer", "WASHER_ENTITY")`, `("power", "HA_POWER_ENTITY")`. Those keys get polled and appear in `values` without showing in the readout. `FakeSensors` needs matching fake keys, with the washer toggling every minute or so, so the simulator can show the feature.
 
 ### Electricity zapping between boids, rate set by house power
+> **Done in [ha-pond-effects.md](ha-pond-effects.md).** Built as `ZapEffect` in `scenes/effects.py`; that plan's design replaces the sketch below, which is kept for history.
+
 - **Rate:** `zaps_per_second = f(watts)` from a whole-house power entity. For example 0 below ~300 W, rising on a log scale to ~10/s at 5 kW. Unavailable → off. It is computed in `set_sensors`, so nothing extra runs per frame when the value doesn't change.
 - **Effects layer in the scene.** After the behaviors draw, the scene runs a list of effects: `draw water → behaviors → effects`.
   - `ZapEffect(behavior)` accumulates `rate × dt`.

@@ -93,6 +93,15 @@ READOUT_ENTITIES = (
     ("humidity", "HA_HUMIDITY_ENTITY"),
 )
 
+# (key, settings name) for the pond's HA effects (scenes/visitors.py,
+# scenes/effects.py, the display sleep). Not shown in the readout.
+EXTRA_ENTITIES = (
+    ("washer_power", "HA_WASHER_POWER_ENTITY"),
+    ("printer_power", "HA_PRINTER_POWER_ENTITY"),
+    ("total_power", "HA_TOTAL_POWER_ENTITY"),
+    ("display", "HA_DISPLAY_ENTITY"),
+)
+
 
 def from_settings(pool, settings, interval_s, now):
     """Build an HAClient from settings.toml values, or None when HA_URL is unset.
@@ -102,7 +111,7 @@ def from_settings(pool, settings, interval_s, now):
         return None
     host, port = parse_url(url)
     entities = []
-    for key, name in READOUT_ENTITIES:
+    for key, name in READOUT_ENTITIES + EXTRA_ENTITIES:
         entity_id = settings.get(name)
         if entity_id:
             entities.append((key, entity_id))

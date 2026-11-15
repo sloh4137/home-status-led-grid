@@ -12,6 +12,7 @@ from behaviors.wander import Wander
 from creatures.parts import Fins, Flippers, Shell, Snout, Tail, Whiskers
 from creatures.varieties import (
     CATFISH_VARIETIES,
+    EEL_VARIETIES,
     KOI_VARIETIES,
     STURGEON_VARIETIES,
     TURTLE_VARIETIES,
@@ -253,6 +254,39 @@ KOI_WANDER = Wander(
     cruise_speed=20.0,
     max_turn=1.5,
     retarget=(1.0, 4.0),
+)
+
+# The electric eel: a visitor the washer calls in (scenes/visitors.py), not
+# a pond fish. Long, narrow and very flexible, so it whips round on its fast
+# turns; only a tail, its long fin is too fine to show. Far faster than
+# anything else, with short retarget timers and a quick turn ease, so it
+# darts. Not in SPECIES, so a save can never load one as a pond fish.
+ELECTRIC_EEL = Species(
+    name="electric eel",
+    joints=14,
+    link=2.5,
+    widths=(3, 4, 4, 4, 4, 4, 3.5, 3, 3, 3, 2.5, 2, 2, 1.5),
+    angle_limit=pi / 6,
+    varieties=EEL_VARIETIES,
+    parts=(Tail(length=2.5, spread=20, width=1.5),),
+    motion=Wander(
+        # Close walls and a long ramp: at its speed it would otherwise spend
+        # 40 % of its time off screen. Head on screen ~97 % (headless).
+        outside_window_size=5,
+        wall_avoid_distance=30,
+        avoidance_force=200.0,
+        min_speed=15.0,
+        max_speed=80.0,
+        cruise_speed=60.0,
+        max_turn=4.0,
+        retarget=(0.3, 1.2),
+        turn_ease=6.0,
+        speed_variation=0.4,
+        speed_ease=3.0,
+        pause_chance=0.05,
+    ),
+    lifecycle=False,
+    persist=False,
 )
 
 # Every species, in draw order (bottom first): the bottom dwellers under the
