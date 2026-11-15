@@ -78,7 +78,7 @@ LILY_MOTION = Wander(
 )
 # At its drift speed it takes a while to get off screen: headless, 18 s
 # median, 37 s max in clean air, up to ~90 s at the CO2 speed floor (0.4)
-LILY_LEAVE_TIMEOUT = 90
+LILY_LEAVE_TIMEOUT = 30
 
 
 def watts(entry):
