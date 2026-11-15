@@ -106,7 +106,8 @@ def create_scene(width=64, height=64, store=None, config=None):
     changes; the CO2 level drains the color out of the pond (creatures and
     water) and slows every moving thing (speed_for_level), easing in over a
     few seconds. The washer's and printer's plug power call in visitors
-    (scenes/visitors.py: the washer brings the electric eel) and the house's
+    (scenes/visitors.py: the washer brings the electric eel, the printer a
+    lily pad with a 3D printer on it) and the house's
     total power sets the zap rate (scenes/effects.py, not drawn yet).
 
     The fish come from the store's ``pond`` section (behaviors/lifecycle.py),
@@ -180,8 +181,8 @@ def create_scene(width=64, height=64, store=None, config=None):
     # [current speed, target speed]
     speed = [1.0, 1.0]
 
-    # HA effects: the visitors (the eel so far) and the zap rate (not drawn
-    # yet)
+    # HA effects: the visitors (the eel and the lily pad) and the zap rate
+    # (not drawn yet)
     settings = config or Settings({})
     visitors = Visitors(visitors_from(settings, pond_colors), canvas, width, height)
     zap_lo, zap_hi = zap_min_watts(settings), zap_max_watts(settings)
@@ -218,7 +219,8 @@ def create_scene(width=64, height=64, store=None, config=None):
         pond.update(dt, motion_dt)
         for flock in boid_flocks:
             flock.update(motion_dt)
-        # Over everything: timers ran above on dt, the swimming on motion_dt
+        # Over everything, the lily pad on top: timers ran above on dt, the
+        # swimming on motion_dt
         visitors.update(motion_dt)
 
     return group, update, set_sensors

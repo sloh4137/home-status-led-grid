@@ -10,8 +10,8 @@ makes the visitor leave after the delay instead of staying forever.
 
 Arriving, a visitor is built just outside a random edge, heading in, and the
 walls bring it in on its own. Leaving, its walls go off (SwimBehavior.walls)
-so it wanders out, and it's removed once it's fully off screen, or after
-LEAVE_TIMEOUT seconds wherever it is (one pop, rare enough to accept). If
+so it wanders out, and it's removed once it's fully off screen, or after its
+leave timeout wherever it is (one pop, rare enough to accept). If
 the condition comes back while it's leaving, its walls go back on and it
 stays.
 
@@ -25,14 +25,17 @@ the first poll.
 import random
 
 from config import printer_on_watts, washer_on_watts
+from behaviors.wander import Wander
 from creatures.colors import ELECTRIC, desaturate
+from creatures.lily_pad import PRINT_SLOTS, LilyPad
 from creatures.species import ELECTRIC_EEL
 from creatures.spine_creature import SpineCreature
 from graphics.vector import Vector
 
 WASHER_OFF_SECONDS = 60
 PRINTER_OFF_SECONDS = 60
-# A leaving visitor still on screen after this long is removed anyway
+# A leaving visitor still on screen after this long is removed anyway (the
+# default; the slow lily pad gets longer)
 LEAVE_TIMEOUT = 20
 
 # Visitor states
@@ -53,6 +56,29 @@ EEL_FLICKER = (
 )
 EEL_FLASH = 0xFFFFFF
 EEL_FLASH_CHANCE = 0.05
+
+# The lily pad drifts: a slow cruise, pauses, gentle turns. Walls just past
+# the sprite's reach (7 px), so it enters from out of sight, and a long soft
+# push, so it hangs over an edge now and then but mostly stays on: headless,
+# fully on screen ~85 % of the time and never fully off. Gentle turns keep
+# its heading, so with the walls off it drifts out instead of circling.
+LILY_MOTION = Wander(
+    outside_window_size=8,
+    wall_avoid_distance=20,
+    avoidance_force=8.0,
+    min_speed=0.5,
+    max_speed=4.0,
+    cruise_speed=3.0,
+    max_turn=0.15,
+    retarget=(3.0, 8.0),
+    turn_ease=0.5,
+    speed_variation=0.3,
+    speed_ease=0.3,
+    pause_chance=0.2,
+)
+# At its drift speed it takes a while to get off screen: headless, 18 s
+# median, 37 s max in clean air, up to ~90 s at the CO2 speed floor (0.4)
+LILY_LEAVE_TIMEOUT = 90
 
 
 def watts(entry):
@@ -118,7 +144,7 @@ class Flicker:
         self.flash_chance = flash_chance
         self._wait = 0
 
-    def update(self):
+    def update(self, behavior, dt):
         self._wait -= 1
         if self._wait > 0:
             return
@@ -157,19 +183,47 @@ def build_eel(canvas, width, height):
     return behavior
 
 
+def build_lily_pad(canvas, width, height):
+    """The lily pad's behavior, with the pad just outside an edge (out of
+    sight), drifting in."""
+    behavior = LILY_MOTION.build(canvas, width, height)
+    x, y, dx, dy = entry(width, height, behavior.outside_window_size)
+    pad = LilyPad(Vector(x, y), random.choice(PRINT_SLOTS))
+    behavior.add([pad])
+    behavior.vxs[0] = dx * behavior.cruise_speed
+    behavior.vys[0] = dy * behavior.cruise_speed
+    return behavior
+
+
+def animate_lily_pad(behavior, dt):
+    """The print head moves in pond time, so it slows with the CO2 too."""
+    behavior.creatures[0].tick(dt)
+
+
 class Visitor:
     """
     name, condition(values) -> bool, off_seconds, build(canvas, width,
-    height) -> a behavior holding the one creature, and animate() (or None),
-    called every frame while it's here (the eel's flicker).
+    height) -> a behavior holding the one creature, animate(behavior,
+    motion_dt) (or None), called every frame while it's here (the eel's
+    flicker, the printer's head), and leave_timeout: seconds a leaving
+    visitor gets to get off screen before it's removed anyway.
     """
 
-    def __init__(self, name, condition, off_seconds, build, animate=None):
+    def __init__(
+        self,
+        name,
+        condition,
+        off_seconds,
+        build,
+        animate=None,
+        leave_timeout=LEAVE_TIMEOUT,
+    ):
         self.name = name
         self.condition = condition
         self.off_seconds = off_seconds
         self.build = build
         self.animate = animate
+        self.leave_timeout = leave_timeout
         self.state = AWAY
         self.behavior = None
         self._wanted = False  # the condition at the last set_sensors
@@ -223,7 +277,7 @@ class Visitors:
                     v.state = LEAVING
             elif v.state == LEAVING:
                 v._leaving_for += dt
-                if v._leaving_for >= LEAVE_TIMEOUT:
+                if v._leaving_for >= v.leave_timeout:
                     self._remove(v, "timeout")
 
     def update(self, motion_dt):
@@ -232,7 +286,7 @@ class Visitors:
             if b is None:
                 continue
             if v.animate:
-                v.animate()
+                v.animate(b, motion_dt)
             b.update(motion_dt)
             if v.state == LEAVING:
                 # Fully off screen: the head is past render_margin, which
@@ -260,11 +314,12 @@ def visitors_from(config, colors):
             build_eel,
             Flicker(colors, ELECTRIC, EEL_FLICKER, EEL_FLASH, EEL_FLASH_CHANCE).update,
         ),
-        # M5 builds the lily pad; until then the printer only prints
         Visitor(
             "lily",
             power_above("printer_power", printer_on_watts(config)),
             PRINTER_OFF_SECONDS,
-            None,
+            build_lily_pad,
+            animate_lily_pad,
+            LILY_LEAVE_TIMEOUT,
         ),
     )
