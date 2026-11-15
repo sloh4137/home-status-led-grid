@@ -29,6 +29,21 @@ POND_TIME_SCALE.
 A scene's ``create_scene`` may return a third element, ``set_sensors(values)``.
 It gets the whole sensor values dict at startup, on every sensor swap and
 whenever ``sensors.changed``, so new sensor-driven effects need no wiring here.
+It may also return a fourth, ``background(dt)``: what has to keep running
+while the display sleeps (the pond's lifecycle and visitor timers). A scene
+without one freezes while asleep.
+
+Display sleep: the ``display`` sensor (HA_DISPLAY_ENTITY, an input_boolean)
+puts the panel to sleep when its state is exactly ``off`` and the sensors are
+reading (no status message like NO WIFI or HA OFFLINE). Anything else keeps
+it awake, so a broken HA shows its status instead of a dark panel. Asleep,
+``tick`` runs only the buttons, the sensor poll, ``set_sensors``, the text
+readout (cheap, and right the moment it wakes), ``background`` and the
+store; the runner reads ``app.awake`` to skip ``display.refresh()`` and tick
+slowly. ``set_display(on)`` is called on every change: matrix.brightness on
+hardware, a black window on the desktop. A button press while asleep wakes
+it for WAKE_SECONDS (and goes no further, so it doesn't open the menu); a
+press while woken that way restarts the timer.
 """
 
 from home.readout import sensor_lines, status_message
@@ -39,6 +54,7 @@ from ui.text_panel import TextPanel, panel_height
 
 SENSOR_LINES = 3
 NOTICE_SECONDS = 8
+WAKE_SECONDS = 300  # a button press shows a sleeping pond for this long
 
 
 class App:
@@ -53,11 +69,16 @@ class App:
         set_rotation=None,
         store=None,
         config=None,
+        set_display=None,
     ):
         self.width = width
         self.height = height
         self.buttons = buttons or NoButtons()
         self._set_rotation = set_rotation
+        self._set_display = set_display
+        self.awake = True
+        self._helper_off = False  # the display helper reads exactly "off"
+        self._wake_until = None  # a button wake lasts until then
         self.store = store
         saved = settings_from(store.load() if store else None)
         # Shown from the first tick on, so a slow WiFi connect doesn't eat it
@@ -73,6 +94,8 @@ class App:
         # values dict whenever it changes. The scene decides what each value
         # means (e.g. CO2 -> pond saturation).
         self._scene_sensors = scene[2] if len(scene) > 2 else None
+        # Optional fourth: background(dt), run instead of update while asleep
+        self._scene_background = scene[3] if len(scene) > 3 else None
         # Sensor readout anchored to the bottom edge
         self.sensor_panel = TextPanel(
             self.group, width, height - panel_height(SENSOR_LINES), SENSOR_LINES
@@ -130,7 +153,14 @@ class App:
     def _update_menu(self, now):
         menu = self.menu
         redraw = False
-        for gesture in self.buttons.poll(now):
+        gestures = self.buttons.poll(now)
+        if gestures and self._helper_off:
+            # Asleep: wake. Woken by a button: start the timer over.
+            self._wake_until = now + WAKE_SECONDS
+            if not self.awake:
+                print("display: button wake for %d s" % WAKE_SECONDS)
+                return  # the press only wakes
+        for gesture in gestures:
             redraw = menu.handle(gesture) or redraw
         if not redraw:
             return
@@ -148,6 +178,30 @@ class App:
         self.sensor_panel.set_lines(sensor_lines(sensors.values, self._message))
         if self._scene_sensors:
             self._scene_sensors(sensors.values)
+        self._read_helper(self._message)
+
+    def _read_helper(self, message):
+        """Asleep only on an exact "off" from a source that's reading."""
+        entry = self.sensors.values.get("display")
+        self._helper_off = (
+            message is None and entry is not None and entry[0] == "off"
+        )
+
+    def _update_awake(self, now):
+        if self._wake_until is not None and now >= self._wake_until:
+            self._wake_until = None
+        if not self._helper_off:
+            self._wake_until = None  # awake anyway; a later "off" sleeps at once
+        awake = not self._helper_off or self._wake_until is not None
+        if awake == self.awake:
+            return
+        self.awake = awake
+        print("display: %s" % ("wake" if awake else "sleep"))
+        if not awake and self.menu.visible:
+            self.menu.hide()
+            self.menu_panel.hidden = True
+        if self._set_display:
+            self._set_display(awake)
 
     def tick(self, dt, now):
         self._update_menu(now)
@@ -169,6 +223,11 @@ class App:
             sensors.changed = False
             self._message = message
             self.sensor_panel.set_lines(sensor_lines(sensors.values, message))
-        self._update_scene(dt)
+            self._read_helper(message)
+        self._update_awake(now)
+        if self.awake:
+            self._update_scene(dt)
+        elif self._scene_background:
+            self._scene_background(dt)
         if self.store:
             self.store.tick(now)

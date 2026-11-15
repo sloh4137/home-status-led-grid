@@ -101,8 +101,9 @@ def load_pond_water(width, height):
 
 def create_scene(width=64, height=64, store=None, config=None):
     """
-    Build the scene. Returns (group, update(dt), set_sensors(values)) for the
-    main loop. set_sensors gets the whole sensor values dict whenever it
+    Build the scene. Returns (group, update(dt), set_sensors(values),
+    background(dt)) for the main loop; background runs instead of update
+    while the display sleeps (app.py). set_sensors gets the whole sensor values dict whenever it
     changes; the CO2 level drains the color out of the pond (creatures and
     water) and slows every moving thing (speed_for_level), easing in over a
     few seconds. The washer's and printer's plug power call in visitors
@@ -226,4 +227,10 @@ def create_scene(width=64, height=64, store=None, config=None):
         # swimming on motion_dt
         visitors.update(motion_dt)
 
-    return group, update, set_sensors
+    def background(dt):
+        """While the display sleeps: the lifecycle and the visitors' off
+        delays keep their real-time clocks; nothing moves or draws."""
+        pond.tick_clock(dt)
+        visitors.tick_timers(dt)
+
+    return group, update, set_sensors, background

@@ -298,6 +298,7 @@ class VirtualDisplay:
     display.on_key(fn)    -- calls fn(keysym) on each key press, e.g. "Up"
     display.rotation = 90 -- like displayio's rotation: 0/90/180/270, clockwise
                              (square panels only, so width/height don't swap)
+    display.set_power(on) -- black while off, like matrix.brightness = 0
     """
 
     def __init__(self, width=64, height=64, scale=8, title="Virtual LED Matrix"):
@@ -372,7 +373,20 @@ class VirtualDisplay:
                 )
         self._last = frame
 
-    def run(self, update, fps=30):
+    def set_power(self, on):
+        """Off: the window goes black and stays black (the board pauses its
+        scan). On: the next refresh draws the whole frame again."""
+        if on:
+            return
+        black = (0, 0, 0)
+        for row in self._dots:
+            for dot in row:
+                self._canvas.itemconfig(dot, fill="#000000")
+        self._last = [black] * (self.width * self.height)
+
+    def run(self, update, fps=30, awake=None, sleep_hz=10):
+        """awake() -> bool, if given: while False, skip the refresh and tick
+        at sleep_hz instead of fps, like the board's sleeping loop."""
         import time
 
         last = time.monotonic()
@@ -385,8 +399,11 @@ class VirtualDisplay:
             dt = now - last
             last = now
             update(dt, now)
-            self.refresh()
-            self._root.after(int(1000 / fps), tick)
+            if awake is None or awake():
+                self.refresh()
+                self._root.after(int(1000 / fps), tick)
+            else:
+                self._root.after(int(1000 / sleep_hz), tick)
 
         tick()
         self._root.mainloop()
