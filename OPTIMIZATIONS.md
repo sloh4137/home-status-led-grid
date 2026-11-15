@@ -696,3 +696,71 @@ Pond water background: 2.98 ms. Shell sprites: 16 × 17 × 17 px, 4208 bytes.
 
 **Full pond fps**: still to measure (deploy `tools/full_pond.json`, read
 the `DEBUG` lines).
+
+## 7. HA pond effects
+
+[plans/ha-pond-effects.md](plans/ha-pond-effects.md): CO2 drains the
+color and slows the pond, the washer brings an electric eel, the 3D printer
+a lily pad, house power zaps between the boids, and an HA helper puts the
+display to sleep. Every effect costs nothing per frame while its sensor
+value doesn't change.
+
+- **Saturation (M1)** replaces the brightness shift from §6 M5. A step
+  change rewrites 14 palette slots (6 water + 8 creature), and nothing
+  happens between steps.
+- **Speed (M2)** is one multiply into the `dt` the behaviors get. Aging
+  stays on the real `dt`.
+
+`DEBUG` stats on the board, the board's own pond, each run against the one
+before it:
+
+| Setup | FPS | Physics (ms) | Render (ms) | Net avg / max (ms) | Refresh (ms) |
+| ----- | --- | ------------ | ----------- | ------------------ | ------------ |
+| §6 M8 (for comparison) | 10.0–10.7 | 37.4–40.3 | 36.9–41.8 | 0.2–2.2 / 9.2 | 15.4–16.2 |
+| M2: speed factor | 10.2–10.7 | 38.7–41.6 | 33.6–40.9 | – | 15.6–17.0 |
+| M3: 7 HA entities polled | 9.8–10.4 | 42.2–42.4 | 33.5–38.5 | 3.8–4.8 / 47–50 | 15.4–16.3 |
+| M5: lily pad on screen | 9.7–10.4 | 41.4–44.8 | 36.0–40.2 | 2.6–3.7 / 48 | 14.2–14.8 |
+| M6: zaps at rate 0 | 9.7–10.2 | 40.8–42.6 | 36.2–41.9 | 2.7–4.2 / 48.6 | 13.7–15.1 |
+
+- Each step is within noise of the one before. Over the whole plan,
+  physics is ~2–4 ms up, mostly from polling 7 entities instead of 3 (the
+  net average goes from ~1 to ~4 ms a frame). A full poll cycle still fits
+  in the 5 s interval (`ha ok` stays at 0–1 s).
+- The ~48 ms net maximums are one slow socket step in a poll, as in §6.
+- A quiet house costs nothing for the zaps: the accumulator stays at 0 and
+  no lines are drawn.
+
+**Render cost per visitor** (`bench_render.py` on the board, ms per call):
+
+| Item | Full | Parts |
+| ---- | ---- | ----- |
+| electric eel | 2.26 | body 1.05 (18 discs), spots 0.75 (11), spine 0.57 |
+| lily pad | 0.20 | one 13 × 13 blit; head tick 0.03 |
+
+- The eel costs about a kohaku plus a sturgeon's spots, and only while the
+  washer runs. Its flicker writes one palette slot every 2–3 frames.
+- The lily pad is one blit.
+
+**Zaps (M6), estimated:** a bolt is 13 `draw_line` calls over its 7
+frames and an arc 6, at ~0.2 ms a line (§6 M5.5). At the top rate of 2/s
+about 1.4 get drawn a second, so ~0.4 ms a frame on average and up to ~2 ms
+in a busy frame.
+
+**Still to measure on the board:**
+- `DEBUG` with the eel on screen, and with zaps at the top rate.
+- The `zaps` row of `bench_render.py`.
+- **Display sleep (M7)**, with a USB power meter:
+
+  | State | Power (W) |
+  | ----- | --------- |
+  | Awake, dim pond | – |
+  | Awake, bright scene | – |
+  | Awake, all-black frame | – |
+  | Asleep (`brightness = 0`, 10 Hz ticks) | – |
+
+  The black-frame row against the asleep row shows whether `brightness = 0`
+  pauses the scan; if the two match, try `matrix.deinit()` and re-create
+  it on wake. The asleep row against WiFi alone shows whether a slower
+  sleep tick could still save anything (10 Hz is the floor for now: the HA
+  client does one socket step per tick, so slower ticks would time out
+  requests). The `DEBUG` `sleep` line gives the tick cost.
